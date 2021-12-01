@@ -20,11 +20,18 @@
 
 #include "microtcp.h"
 #include "../utils/crc32.h"
+#include <stdio.h>
 
 microtcp_sock_t
 microtcp_socket (int domain, int type, int protocol)
 {
-  /* Your code here */
+  microtcp_socket_t s;
+  if ((s.sd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1){
+    perror("opening socket");
+    exit(0);
+  }
+  s.state = UNKNOWN;
+  return s;
 }
 
 int
