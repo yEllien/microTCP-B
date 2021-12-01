@@ -26,7 +26,7 @@ microtcp_sock_t
 microtcp_socket (int domain, int type, int protocol)
 {
   microtcp_socket_t s;
-  if ((s.sd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1){
+  if ((s.sd = socket(domain, SOCK_DGRAM, IPPROTO_UDP)) == -1){
     perror("opening socket");
     exit(0);
   }
@@ -38,7 +38,11 @@ int
 microtcp_bind (microtcp_sock_t *socket, const struct sockaddr *address,
                socklen_t address_len)
 {
-  /* Your code here */
+  if(bind(socket->sd, address, address_len) == -1){
+    perror("TCP bind");
+    exit(0);
+  }
+  
 }
 
 int
