@@ -21,6 +21,7 @@
 #include "microtcp.h"
 #include "../utils/crc32.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 microtcp_sock_t
 microtcp_socket (int domain, int type, int protocol)
@@ -52,15 +53,57 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
 }
 
+static uint16_t set_bit (uint16_t data, uint16_t pos)
+{
+  return (data|(1 << pos));
+}
+
+//returns 0 if bit not set, else !=0
+static uint16_t get_bit (uint16_t data, uint16_t pos)
+{
+  return ((data >> pos) & 1);
+}
+
 int
 microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
                  socklen_t address_len)
 {
-  microtcp_header_t *header;
-  struct sockaddr src_addr, src_addr_length;
-
   socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(char));
-  socket->buf_fill_level = recvfrom(socket->sd, &socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_len);
+  socket->buf_fill_level = 0;
+  
+  microtcp_header_t *header;
+  struct sockaddr src_addr;
+  struct socklen_t src_addr_length;
+
+  do
+  {
+    socket->buf_fill_level = receivefrom(socket->sd, &(socket->recvbuf), MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
+    header = socket->recvbuf;
+  } while (get_bit(header->control, 14) == 0);
+  
+  srand(time(NULL));
+  socket->seq_number = rand(); // rand % (2^32)
+  socket->ack_number = socket->seq_number;
+  socket->state = ESTABLISHED;
+
+  microtcp_header_t synack;
+  synack.seq_number = socket->seq_number;
+  synack.ack_number = socket->ack_number;
+  synack.control = 0;
+  synack.control = set_bit(synack.control, 12);
+  synack.control = set_bit(synack.control, 14);
+  synack.window = MICROTCP_WIN_SIZE;
+  synack.data_len = 0;
+  synack.future_use0 = 0;
+  synack.future_use1 = 0;
+  synack.future_use2 = 0;
+  synack.checksum = crc32(&synack, sizeof(synack));
+
+  socket->seq_number += sizeof(synack);
+
+  sendto(socket->sd, &synack, sizeof(synack), &src_addr, src_addr_length);
+
+  return socket->sd;
 }
 
 int
