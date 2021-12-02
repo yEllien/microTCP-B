@@ -46,13 +46,6 @@ microtcp_bind (microtcp_sock_t *socket, const struct sockaddr *address,
   return rv;
 }
 
-int
-microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
-                  socklen_t address_len)
-{
-
-}
-
 static uint16_t set_bit (uint16_t data, uint16_t pos)
 {
   return (data|(1 << pos));
@@ -63,6 +56,49 @@ static uint16_t get_bit (uint16_t data, uint16_t pos)
 {
   return ((data >> pos) & 1);
 }
+
+int
+microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
+                  socklen_t address_len)
+{
+  microtcp_header_t syn, *recv_header;
+  struct sockaddr src_addr, src_addr_length;
+  
+  ssize_t bytes_sent, syn_length = sizeof(syn);
+  srand(time(NULL));
+
+  socket->seq_number = rand();  // create random sequence number for client
+  syn.seq_number = socket->seq_number;
+  syn.control = 0;
+  syn.control = set_bit(syn.control, 14); // set SYN bit to 1
+
+  bytes_sent = sendto(socket->sd, &syn, syn_length, address, address_len);
+  socket->state = SYN_SENT;
+
+  if(bytes_sent != syn_length){
+    socket->state = INVALID;
+    perror("server didn't receive all bytes");
+    return socket->sd;
+  } 
+  
+  do{
+    recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
+    recv_header = socket->recvbuf;
+  }while(*address != src_addr);
+  
+  // received synack from server
+
+  // check that SYN and ACK bits are set to 1
+  // check if ACK_received = SYN_sent + 1
+  if( (get_bit(recv_header->control, 12) != 0) && (get_bit(recv_header->control, 14) != 0) && (recv_header->ack_number == socket->seq_number + 1) ){
+    socket->state = ESTABLISHED;
+  }else{
+    socket->state = INVALID;
+  }
+
+  return socket->sd;
+}
+
 
 int
 microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
