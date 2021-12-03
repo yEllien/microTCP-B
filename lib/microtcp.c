@@ -61,43 +61,74 @@ int
 microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
                   socklen_t address_len)
 {
-  microtcp_header_t syn, *recv_header;
+  microtcp_header_t *syn, synack, ack;
   struct sockaddr src_addr, src_addr_length;
-  
-  ssize_t bytes_sent, syn_length = sizeof(syn);
-  srand(time(NULL));
+  ssize_t bytes_sent;
 
-  socket->seq_number = rand();  // create random sequence number for client
+  srand(time(NULL));
+  socket->seq_number = rand();  // create random sequence number
+
+  /*create the header for the 1st step of the 3-way handshake*/
   syn.seq_number = socket->seq_number;
   syn.control = 0;
-  syn.control = set_bit(syn.control, 14); // set SYN bit to 1
+  syn.control = set_bit(syn.control, 14);        // set SYN bit to 1
+  syn.window = 0;                                //no window yet
+  syn.data_len = 0;   
+  syn.future_use0 = 0;
+  syn.future_use1 = 0;
+  syn.future_use2 = 0;
+  syn.checksum = 0;
+  syn.checksum = crc32(&synack, sizeof(synack)); //add checksum
 
-  bytes_sent = sendto(socket->sd, &syn, syn_length, address, address_len);
-  socket->state = SYN_SENT;
-
-  if(bytes_sent != syn_length){
+  bytes_sent = sendto(socket->sd, &syn, sizeof(syn), address, address_len);
+  if(bytes_sent != sizeof(syn)){
     socket->state = INVALID;
-    perror("server didn't receive all bytes");
+    perror("none or not all bytes of syn were sent\n");
     return socket->sd;
   } 
-  
+  socket->seq_number += 1;
+
+  //wait to receive the SYNACK from the specific address
   do{
     recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
-    recv_header = socket->recvbuf;
+    synack = socket->recvbuf;
   }while(*address != src_addr);
   
   // received synack from server
 
+ // TODO: perform checksum check on synack
+
   // check that SYN and ACK bits are set to 1
   // check if ACK_received = SYN_sent + 1
-  if( (get_bit(recv_header->control, 12) != 0) && (get_bit(recv_header->control, 14) != 0) && (recv_header->ack_number == socket->seq_number + 1) ){
-    socket->server_addr = address;
-    socket->server_addr_len = address_len;
-
+  if( (get_bit(synack->control, 12) != 0) && (get_bit(synack->control, 14) != 0) && (synack->ack_number == socket->seq_number) ){
+    socket->address = address;
+    socket->address_len = address_len;
     socket->state = ESTABLISHED;
   }else{
     socket->state = INVALID;
+    return socket->sd;
   }
+
+  //make header of last ack
+  ack.seq_number = socket->seq_number;
+  ack.seq_number = socket->ack_number;
+  ack.control = 0;
+  ack.control = set_bit(syn.control, 12); // set ACK bit to 1
+  ack.window = MICROTCP_WIN_SIZE; //now send the window size
+  ack.data_len = 0;               //no data yet
+  ack.future_use0 = 0;
+  ack.future_use1 = 0;
+  ack.future_use2 = 0;
+  ack.checksum = crc32(&synack, sizeof(synack)); //add checksum
+
+  //send last ack
+  bytes_sent = sendto(socket->sd, &ack, sizeof(ack), address, address_len);
+  if(bytes_sent != sizeof(ack)){
+    socket->state = INVALID;
+    perror("none or not all ack bytes were sent");
+    return socket->sd;
+  } 
+  socket->seq_number += 1;
 
   return socket->sd;
 }
@@ -110,24 +141,34 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(char));
   socket->buf_fill_level = 0;
   
-  microtcp_header_t *header;
+  microtcp_header_t *syn, synack, *ack;
   struct sockaddr src_addr;
   struct socklen_t src_addr_length;
+  ssize_t bytes_sent, rcv; 
 
+  //receive syn segment
   do
   {
-    socket->buf_fill_level = receivefrom(socket->sd, &(socket->recvbuf), MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
-    header = socket->recvbuf;
-  } while (get_bit(header->control, 14) == 0);
+    if (!receivefrom(socket->sd, &(socket->recvbuf), MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length));
+      syn = socket->recvbuf;
+  } while (get_bit(syn->control, 14) == 0);
   
-  srand(time(NULL));
-  socket->seq_number = rand(); // rand % (2^32)
-  socket->ack_number = header->seq_number+1;
-  socket->state = ESTABLISHED;
+  //received syn segment
+  //TODO: perform checksum 
 
-  microtcp_header_t synack;
+  srand(time(NULL));
+  socket->seq_number = rand(); //create random sequence number
+  socket->init_win_size = syn->window;
+  socket->curr_win_size = syn->window;
+  socket->ack_number = syn->ack_number; //last byte acked
+  socket->address = src_addr;
+  socket->address_len = src_addr_length;
+
+  //socket->ack_number = syn->seq_number+1;
+
+  //create header of synack
   synack.seq_number = socket->seq_number;
-  synack.ack_number = socket->ack_number;
+  synack.ack_number = syn->seq_number + 1;
   synack.control = 0;
   synack.control = set_bit(synack.control, 12);
   synack.control = set_bit(synack.control, 14);
@@ -136,11 +177,42 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   synack.future_use0 = 0;
   synack.future_use1 = 0;
   synack.future_use2 = 0;
+  synack.checksum = 0;
   synack.checksum = crc32(&synack, sizeof(synack));
 
-  socket->seq_number += sizeof(synack);
+  bytes_sent = sendto(socket->sd, &synack, sizeof(synack), &socket->address, &socket->address_len);
+  if (bytes_sent != sizeof(synack))
+  {
+    socket->state = INVALID;
+    perror("none or not all bytes of synack were sent\n");
+    return socket->sd;
+  }
+  socket->seq_number += 1;
 
-  sendto(socket->sd, &synack, sizeof(synack), &src_addr, &src_addr_length);
+  do
+  {
+    rcv = receivefrom(socket->sd, &(socket->recvbuf), MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length));
+    ack = socket->recvbuf;
+  } while (socket->address != src_addr);
+  
+  if (rcv)
+  {
+    socket->state = INVALID;
+    perror("none or not all bytes of ACK were received\n");
+    return socket->sd;
+  }
+
+  //checl ACK bit
+  if(get_bit(ack->control, 12)==0)
+  {
+    socket->state = INVALID;
+    perror("failed to accept connection\n");
+    return socket->sd;
+  }
+
+  socket->state = ESTABLISHED;
+  socket->ack_number = ack->ack_number;
+  
   return socket->sd;
 }
 //TODO: check return value of checksum and sendto
@@ -228,4 +300,18 @@ ssize_t
 microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 {
   /* Your code here */
+}
+
+//returns the current window
+uint16_t get_unacked (microtcp_socket_t *sock)
+{
+  // unacked bytes = last byte sent - last byte acked
+  return  sock->seq_number - sock->ack_number;
+}
+
+//returns the current window
+uint16_t get_my_rwnd (microtcp_socket_t *sock)
+{
+  // unread bytes = last byte received - last byte read
+  //return MICROTCP_WIN_SIZE - (?? - sock->bytes_received)
 }

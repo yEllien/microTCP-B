@@ -77,12 +77,15 @@ typedef struct
 
   size_t seq_number;            /**< Keep the state of the sequence number */
   size_t ack_number;            /**< Keep the state of the ack number */
-  uint64_t packets_send;
+  uint64_t packets_send;        
   uint64_t packets_received;
   uint64_t packets_lost;
   uint64_t bytes_send;
   uint64_t bytes_received;
   uint64_t bytes_lost;
+
+  struct sockaddr address;
+  socklen_t address_len; 
 } microtcp_sock_t;
 
 
