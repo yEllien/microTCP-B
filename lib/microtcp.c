@@ -147,27 +147,49 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
 int
 microtcp_shutdown (microtcp_sock_t *socket, int how)
 {
-  microtcp_header_t client_fin, server_ack, *server_header, *client_ack, *client_finack;
+  microtcp_header_t client_fin, server_ack, *server_header, *client_ack, *client_finack, client_send_ack;
+  ssize_t ret;
+  uint32_t checksum_received, checksum_calculated;
 
   if(socket->state == CLOSING_BY_PEER){
 
+    /* server creates ACK segment */
+
     server_ack.control = 0;
-    server_ack.control = set_bit(client_fin.control, 12); // set ACK bit to 1
-    server_ack.control = set_bit(client_fin.control, 15); // set FIN bit to 1
-    server_ack.ack_number = socket->seq_number + 1;
-    server_ack.seq_number = socket->seq_number;
-    server_ack.checksum =  crc32(&client_fin, sizeof(client_fin));
+    server_ack.control = set_bit(server_ack.control, 12); // set ACK bit to 1
+    server_ack.control = set_bit(server_ack.control, 15); // set FIN bit to 1
+    server_ack.ack_number = htonl(socket->seq_number + 1);
+    server_ack.seq_number = htonl(socket->seq_number);
+    server_ack.checksum =  0;
     server_ack.window = MICROTCP_WIN_SIZE;
     server_ack.data_len = 0;
     server_ack.future_use0 = 0;
     server_ack.future_use1 = 0;
     server_ack.future_use2 = 0;
+    server_ack.checksum = htonl(crc32(&server_ack, sizeof(server_ack)));
 
-    sendto(socket->sd, &server_ack, sizeof(server_ack), 0, socket->server_addr, socket->server_addr_len);
+    /* server sends ACK to client */
+    ret = sendto(socket->sd, &server_ack, sizeof(server_ack), 0, socket->server_addr, socket->server_addr_len);
 
-    recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->server_addr, socket->server_addr_len);
+    /* if sendto returned error value or not all header bytes were sent return invalid socket */
+    if(ret < 0 || ret != sizeof(server_ack)){
+        socket->state = INVALID;
+        return socket->sd;
+    }
+
+    /* server waits to receive ACK from client */
+    ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->server_addr, socket->server_addr_len);
+    
+    /* if recvfrom returned error value or not all header bytes were received return invalid socket */
+    if(ret < 0 || ret != sizeof(server_ack)){
+        socket->state = INVALID;
+        return socket->sd;
+    }
+
+    /* client ACK header received in server's recv buffer */
     server_header = socket->recvbuf;
     socket->seq_number += 1;
+    checksum_received = ntohl(server_header->checksum);
 
     if(server_header->seq_number != socket->ack_number && server_header->ack_number != socket->seq_number){
       perror("error");
@@ -175,6 +197,8 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     }
 
   }else{
+
+    /* client creates FIN ACK segment */
 
     client_fin.control = 0;
     client_fin.control = set_bit(client_fin.control, 12); // set ACK bit to 1
@@ -189,32 +213,62 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     client_fin.future_use2 = 0;
 
     /* send FIN ACK to server */
-    sendto(socket->sd, &client_fin, sizeof(client_fin), 0, socket->server_addr, socket->server_addr_len);
+    ret = sendto(socket->sd, &client_fin, sizeof(client_fin), 0, socket->server_addr, socket->server_addr_len);
+    
+    /* if sendto returned error value or not all header bytes were sent return invalid socket */
+    if(ret < 0 || ret != sizeof(server_ack)){
+        socket->state = INVALID;
+        return socket->sd;
+    }
+
     socket->seq_number += 1;
 
+    /* client waits to receive ACK from server */
     recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->server_addr, socket->server_addr_len);
     client_ack = socket->recvbuf;
     
-    if(client_ack->ack_number != client_fin.seq_number){
+    if((client_ack->ack_number != client_fin.seq_number) || (get_bit(client_finack->control, 12) == 0)){
         perror("error");
         socket->state = INVALID;
         return socket->sd;
     }
 
+    socket->state = CLOSING_BY_HOST;
+
+    /* client waits to receive FIN ACK from server */
+
     recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->server_addr, socket->server_addr_len);
     client_finack = socket->recvbuf;
 
+    /* check that FIN and ACK bits are set to 1 */
     if((get_bit(client_finack->control, 12) == 0) && (get_bit(client_finack->control, 15) == 0)){
         perror("error");
         socket->state = INVALID;
         return socket->sd;
     }
 
-    if(client_finack->ack_number)
+    /* check if ack number and seq number */
+    if(client_finack->ack_number != socket->seq_number){
+        perror("error");
+        socket->state = INVALID;
+        return socket->sd;
+    }
+
+    socket->state = CLOSED;
+
+    client_send_ack.control = 0;
+    client_send_ack.control = set_bit(client_fin.control, 12); // set ACK bit to 1
+    client_send_ack.ack_number = client_finack->seq_number+1;
+    client_send_ack.seq_number = socket->seq_number;
+    client_send_ack.checksum =  crc32(&client_fin, sizeof(client_fin));
+    client_send_ack.window = MICROTCP_WIN_SIZE;
+    client_send_ack.data_len = 0;
+    client_send_ack.future_use0 = 0;
+    client_send_ack.future_use1 = 0;
+    client_send_ack.future_use2 = 0;
 
   }
 
-  /* this is a test push */
 }
 
 ssize_t
