@@ -119,7 +119,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   
   srand(time(NULL));
   socket->seq_number = rand(); // rand % (2^32)
-  socket->ack_number = socket->seq_number;
+  socket->ack_number = header->seq_number+1;
   socket->state = ESTABLISHED;
 
   microtcp_header_t synack;
