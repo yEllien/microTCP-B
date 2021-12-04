@@ -78,19 +78,20 @@ static microtcp_header_t * make_header (uint32_t seq_number,uint32_t ack_number,
 {
   microtcp_header_t *header = malloc (sizeof(microtcp_header_t));
 
-  header->seq_number = seq_number;
-  header->ack_number = ack_number;
-  header->window = window;
-  header->data_len = data_len;
+  header->seq_number = htonl(seq_number);
+  header->ack_number = htonl(ack_number);
+  header->window = htnos(window);
+  header->data_len = htonl(data_len);
   header->future_use0 = 0;
   header->future_use1 = 0;
   header->future_use2 = 0;
   header->checksum = 0;
-  header->control = 0;
-  if(ACK) set_bit(header->control, ACK_F);
-  if(RST) set_bit(header->control, RST_F);
-  if(SYN) set_bit(header->control, SYN_F);
-  if(FIN) set_bit(header->control, FIN_F);
+  uint16_t tmp_control = 0;
+  if(ACK) set_bit(tmp_control, ACK_F);
+  if(RST) set_bit(tmp_control, RST_F);
+  if(SYN) set_bit(tmp_control, SYN_F);
+  if(FIN) set_bit(tmp_control, FIN_F);
+  header->control = htons(tmp_control);
 
   return header;
 }
