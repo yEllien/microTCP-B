@@ -24,6 +24,7 @@
 #include "../utils/crc32.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 
 microtcp_sock_t
@@ -109,13 +110,16 @@ static int is_checksum_valid(const uint8_t *recv_buf){
 
   size = sizeof(recv_header); //TODO: check size
   tmp_header = malloc(size);
-
+  /*
   for(i=0 ; i<size ; i++){ 
     tmp_header[i] = recv_header[i];
   }
+  */
+
+  memcpy(tmp_header, recv_header, size);
 
   /* check sum in received header */
-  received_checksum = ntohl(recv_header->checksum);
+  received_checksum = ntohl(tmp_header->checksum);
 
   /* calculate checksum of header for comparison */
   calculated_checksum = ntohl(crc32(recv_buf, sizeof(recv_buf)));
