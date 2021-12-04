@@ -76,13 +76,40 @@ static uint16_t get_bit (uint16_t data, uint16_t pos)
   return ((data >> pos) & 1);
 }
 
+/* Calculates checksum of header recv_header
+   Returns 1 if checksum calculated is equal to 
+   checksum field of header else returns 0 */
+
+static int is_checksum_valid(const uint8_t *recv_buf){
+
+  microtcp_header_t *tmp_header, *recv_header = recv_buf;
+  uint32_t received_checksum, calculated_checksum;
+  int i = 0, size = 0;
+
+  size = sizeof(recv_header); //TODO: check size
+  tmp_header = malloc(size);
+
+  for(i=0 ; i<size ; i++){ 
+    tmp_header[i] = recv_header[i];
+  }
+
+  /* check sum in received header */
+  received_checksum = ntohl(recv_header->checksum);
+
+  /* calculate checksum of header for comparison */
+  calculated_checksum = ntohl(crc32(recv_buf, sizeof(recv_buf)));
+
+  return (received_checksum == calculated_checksum);
+}
+
+
 int
 microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
                   socklen_t address_len)
 {
   microtcp_header_t syn, *synack, ack;
   struct sockaddr src_addr, src_addr_length;
-  ssize_t bytes_sent;
+  ssize_t bytes_sent, ret;
 
   srand(time(NULL));
   socket->seq_number = rand();  // create random sequence number
@@ -114,26 +141,41 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   //wait to receive the SYNACK from the specific address
 
   do{
-    recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
+    ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
     synack = socket->recvbuf;
   }while(*address != src_addr);
   
   // received synack from server
+  if(ret<0 || ret != MICROTCP_RECVBUF_LEN){
+    socket->state = UNKNOWN; //TODO: ckeck state
+    return socket->sd;
+  }
 
- // TODO: perform checksum check on synack
-
-
+  /* check if checksum in received header is valid */
+  if(!is_checksum_valid(socket->recvbuf)){
+    socket->state = UNKNOWN; //TODO: ckeck state
+    return socket->sd;
+  }
 
   // check that SYN and ACK bits are set to 1
   // check if ACK_received = SYN_sent + 1
   if( (get_bit(synack->control, 12) != 0) && (get_bit(synack->control, 14) != 0) && (synack->ack_number == socket->seq_number) ){
     socket->address = address;
-    socket->address_length = address_len;
-    socket->state = ESTABLISHED;
+    socket->address_len = address_len;
+    socket->state = ESTABLISHED;    //TODO: maybe put this at the end of function
   }else{
     socket->state = INVALID;
     return socket->sd;
   }
+
+  /* SYN ACK received from header is valid so we store sequence number */
+  // O client λαμβάνει το SYN+ACK πακέτο, αποθηκεύει το sequence number M του server και 
+  // στέλνει ένα ACK με ACK number Μ+1 (από εκφώνηση)
+
+  socket->seq_number = synack->seq_number;
+
+  /* increment seq number */
+  socket->seq_number += 1;
 
   //make header of last ack
   ack.seq_number = socket->seq_number;
@@ -154,7 +196,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
     perror("none or not all ack bytes were sent");
     return socket->sd;
   } 
-  socket->seq_number += 1;
+  socket->seq_number += 1;    // TODO: check this
 
   return socket->sd;
 }
@@ -190,7 +232,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   socket->curr_win_size = syn->window;
   socket->ack_number = syn->ack_number; //last byte acked
   socket->address = src_addr;
-  socket->address_length = src_addr_length;
+  socket->address_len = src_addr_length;
 
   //socket->ack_number = syn->seq_number+1;
 
@@ -243,7 +285,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   
   return socket->sd;
 }
-//TODO: check return value of checksum and sendto
+
 int
 microtcp_shutdown (microtcp_sock_t *socket, int how)
 {
@@ -269,7 +311,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     server_ack.checksum = htonl(crc32(&server_ack, sizeof(server_ack)));
 
     /* server sends ACK to client */
-    ret = sendto(socket->sd, &server_ack, sizeof(server_ack), 0, socket->address, socket->address_length);
+    ret = sendto(socket->sd, &server_ack, sizeof(server_ack), 0, socket->address, socket->address_len);
 
     /* if sendto returned error value or not all header bytes were sent return invalid socket */
     if(ret < 0 || ret != sizeof(server_ack)){
@@ -278,7 +320,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     }
 
     /* server waits to receive ACK from client */
-    ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->address, socket->address_length);
+    ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->address, socket->address_len);
     
     /* if recvfrom returned error value or not all header bytes were received return invalid socket */
     if(ret < 0 || ret != sizeof(server_ack)){
@@ -288,13 +330,23 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
 
     /* client ACK header received in server's recv buffer */
     server_header = socket->recvbuf;
+  //  checksum_received = ntohl(server_header->checksum);
+    
+    /* check if checksum is valid */
+    if(!is_checksum_valid(socket->recvbuf)){
+      socket->state = INVALID;
+      return socket->sd;
+    }
+   
     socket->seq_number += 1;
-    checksum_received = ntohl(server_header->checksum);
 
+    /* check that seq number and ack number are valid */
     if(server_header->seq_number != socket->ack_number && server_header->ack_number != socket->seq_number){
       perror("error");
       return socket->sd;
     }
+
+    socket->state = CLOSED;
 
   }else{
 
@@ -305,18 +357,18 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     client_fin.control = set_bit(client_fin.control, 15); // set FIN bit to 1
     client_fin.ack_number = socket->ack_number;
     client_fin.seq_number = socket->seq_number;
-    client_fin.checksum =  crc32(&client_fin, sizeof(client_fin));
     client_fin.window = MICROTCP_WIN_SIZE;
     client_fin.data_len = 0;
     client_fin.future_use0 = 0;
     client_fin.future_use1 = 0;
     client_fin.future_use2 = 0;
+    client_fin.checksum =  crc32(&client_fin, sizeof(client_fin));
 
     /* send FIN ACK to server */
-    ret = sendto(socket->sd, &client_fin, sizeof(client_fin), 0, socket->address, socket->address_length);
+    ret = sendto(socket->sd, &client_fin, sizeof(client_fin), 0, socket->address, socket->address_len);
     
     /* if sendto returned error value or not all header bytes were sent return invalid socket */
-    if(ret < 0 || ret != sizeof(server_ack)){
+    if(ret < 0 || ret != sizeof(client_fin)){
         socket->state = INVALID;
         return socket->sd;
     }
@@ -324,9 +376,16 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     socket->seq_number += 1;
 
     /* client waits to receive ACK from server */
-    recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->address, socket->address_length);
+    recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->address, socket->address_len);
     client_ack = socket->recvbuf;
     
+    /* check if checksum is valid */
+    if(!is_checksum_valid(socket->recvbuf)){
+      socket->state = INVALID;
+      return socket->sd;
+    }
+
+    /* check if ACK is valid and ACK bit is set to 1 */
     if((client_ack->ack_number != client_fin.seq_number) || (get_bit(client_finack->control, 12) == 0)){
         perror("error");
         socket->state = INVALID;
@@ -339,6 +398,12 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
 
     recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->address, socket->address_len);
     client_finack = socket->recvbuf;
+
+    /* check if checksum is valid */
+    if(!is_checksum_valid(socket->recvbuf)){
+      socket->state = INVALID;
+      return socket->sd;
+    }
 
     /* check that FIN and ACK bits are set to 1 */
     if((get_bit(client_finack->control, 12) == 0) && (get_bit(client_finack->control, 15) == 0)){
@@ -354,21 +419,33 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
         return socket->sd;
     }
 
-    socket->state = CLOSED;
+    /* client creates ACK segment to send to server */
 
     client_send_ack.control = 0;
     client_send_ack.control = set_bit(client_fin.control, 12); // set ACK bit to 1
     client_send_ack.ack_number = client_finack->seq_number+1;
     client_send_ack.seq_number = socket->seq_number;
-    client_send_ack.checksum =  crc32(&client_fin, sizeof(client_fin));
     client_send_ack.window = MICROTCP_WIN_SIZE;
     client_send_ack.data_len = 0;
     client_send_ack.future_use0 = 0;
     client_send_ack.future_use1 = 0;
     client_send_ack.future_use2 = 0;
+    client_send_ack.checksum =  crc32(&client_fin, sizeof(client_fin));
+
+    /* send FIN ACK to server */
+    ret = sendto(socket->sd, &client_send_ack, sizeof(client_send_ack), 0, socket->address, socket->address_len);
+    
+    /* if sendto returned error value or not all header bytes were sent return invalid socket */
+    if(ret < 0 || ret != sizeof(client_send_ack)){
+        socket->state = INVALID;
+        return socket->sd;
+    }
+
+    socket->state = CLOSED;
 
   }
 
+return socket->sd;
 }
 
 ssize_t
