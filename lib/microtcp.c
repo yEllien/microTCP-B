@@ -41,11 +41,13 @@ microtcp_socket (int domain, int type, int protocol)
   s.bytes_received = 0;
   s.bytes_lost = 0;
   
-  int timeout_value = MICROTCP_ACK_TIMEOUT_US;
-  if (setsockopt(s.sd, SOL_SOCKET, SO_RCVTIMEO, &timeout_value, sizeof(int)) == -1)
+  struct timeval timeout;
+  timeout.tv_sec = 0;
+  timeout.tv_usec = MICROTCP_ACK_TIMEOUT_US;
+  if (setsockopt(s.sd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1)
   {
     perror("setting receive timeout interval");
-    s.state = INVALID;
+    s.state = INVALID;  
     return s;
   }
 
