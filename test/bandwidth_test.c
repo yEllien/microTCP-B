@@ -249,6 +249,88 @@ int
 client_microtcp (const char *serverip, uint16_t server_port, const char *file)
 {
   /*TODO: Write your code here */
+  uint8_t *buffer;
+  microtcp_socket_t *sock;       // changed sock type from int to microtcp_socket_t *
+  socklen_t client_addr_len;
+  FILE *fp;
+  size_t read_items = 0;
+  ssize_t data_sent;
+
+  struct sockaddr *client_addr;
+
+  /* Allocate memory for the application receive buffer */
+  buffer = (uint8_t *) malloc (CHUNK_SIZE);
+  if (!buffer) {
+    perror ("Allocate application receive buffer");
+    return -EXIT_FAILURE;
+  }
+
+  /* Open the file for writing the data from the network */
+  fp = fopen (file, "r");
+  if (!fp) {
+    perror ("Open file for reading");
+    free (buffer);
+    return -EXIT_FAILURE;
+  }
+
+  // create a microtcp socket
+  if ((sock->sd = microtcp_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+    perror ("Opening microTCP socket");
+    free (buffer);
+    fclose (fp);
+    return -EXIT_FAILURE;
+  }
+
+  struct sockaddr_in sin;
+  memset (&sin, 0, sizeof(struct sockaddr_in));
+  sin.sin_family = AF_INET;
+
+  /*Port that server listens at */
+  sin.sin_port = htons (server_port);
+
+  /* The server's IP*/
+  sin.sin_addr.s_addr = inet_addr (serverip);
+
+  // microtcp_connect returns the socket so we have to check for error based on the socket's state
+  microtcp_connect(sock, (struct sockaddr *) &sin, sizeof(struct sockaddr_in));
+
+  if(sock->state == INVALID){
+    perror ("TCP connect");
+    exit (EXIT_FAILURE);
+  }
+
+  printf ("Starting sending data...\n");
+  /* Start sending the data */
+  while (!feof (fp)) {
+    read_items = fread (buffer, sizeof(uint8_t), CHUNK_SIZE, fp);
+    if (read_items < 1) {
+      perror ("Failed read from file");
+      microtcp_shutdown(sock, SHUT_RDWR);
+     // close (sock);
+      free (buffer);
+      fclose (fp);
+      return -EXIT_FAILURE;
+    }
+
+    data_sent = microtcp_send(sock, buffer, read_items * sizeof(uint8_t), 0);
+    if (data_sent != read_items * sizeof(uint8_t)) {
+      printf ("Failed to send the"
+              " amount of data read from the file.\n");
+      microtcp_shutdown(sock, SHUT_RDWR);
+    //  close (sock);
+      free (buffer);
+      fclose (fp);
+      return -EXIT_FAILURE;
+    }
+
+  }
+
+  printf ("Data sent. Terminating...\n");
+  microtcp_shutdown(sock, SHUT_RDWR);
+ // close (sock);
+  free (buffer);
+  fclose (fp);
+  
   return 0;
 }
 
