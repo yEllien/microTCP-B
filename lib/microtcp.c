@@ -158,7 +158,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   synack = tmp_buf;
 
   // received segment
-  if(ret<0 || ret != MICROTCP_RECVBUF_LEN){
+  if(ret<0){
     socket->state = UNKNOWN; //TODO: ckeck state
     return socket->sd;
   }
@@ -171,7 +171,9 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   // check that SYN and ACK bits are set to 1
   // check if ACK_received = SYN_sent + 1
-  if( (get_bit(synack->control, 12) == 0) || (get_bit(synack->control, 14) == 0) || (synack->ack_number != socket->seq_number) )
+  if( (get_bit(ntohl(synack->control), SYN_F) == 0) 
+   || (get_bit(ntohl(synack)->control, ACK_F) == 0) 
+   || (notohl(synack->ack_number) != socket->seq_number) )
   {
     socket->state = INVALID;
     return socket->sd;
@@ -181,7 +183,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   socket->address_len = address_len;
   socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(char));
   socket->state = ESTABLISHED;    //TODO: maybe put this at the end of function
-  socket->ack_number = synack->seq_number + 1;
+  socket->ack_number = ntohl(synack->seq_number) + 1;
 
   // O client λαμβάνει το SYN+ACK πακέτο, αποθηκεύει το sequence number M του server και 
   // στέλνει ένα ACK με ACK number Μ+1 (από εκφώνηση)
@@ -222,7 +224,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   {
     if (!receivefrom(socket->sd, &(socket->recvbuf), MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length));
       syn = socket->recvbuf;
-  } while (get_bit(syn->control, 14) == 0);
+  } while (get_bit(ntohs(syn->control), SYN_F) == 0);
   
   //received SYN segment
 
@@ -236,9 +238,9 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   //received valid SYN segment
   srand(time(NULL));
   socket->seq_number = rand(); //create random sequence number
-  socket->ack_number = syn->ack_number+1;
-  socket->init_win_size = syn->window;
-  socket->curr_win_size = syn->window;
+  socket->ack_number = ntohl(syn->ack_number)+1;
+  socket->init_win_size = ntohs(syn->window);
+  socket->curr_win_size = ntohs(syn->window);
   socket->address = src_addr;
   socket->address_len = src_addr_length;
 
@@ -275,7 +277,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   }
 
   //check ACK bit
-  if(get_bit(ack->control, 12)==0)
+  if(get_bit(ntohs(ack->control), ACK_F)==0)
   {
     socket->state = INVALID;
     perror("failed to accept connection\n");
