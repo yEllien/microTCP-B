@@ -210,8 +210,8 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
 {
   socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(char));
   socket->buf_fill_level = 0;
-  s.init_win_size = MICROTCP_WIN_SIZE;
-  s.curr_win_size = MICROTCP_WIN_SIZE;
+  socket->init_win_size = MICROTCP_WIN_SIZE;
+  socket->curr_win_size = MICROTCP_WIN_SIZE;
   
   microtcp_header_t *syn, synack, *ack;
   struct sockaddr src_addr;
@@ -226,7 +226,13 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   } while (get_bit(syn->control, 14) == 0);
   
   //received syn segment
-  //TODO: perform checksum 
+
+  // checksum validation
+  if(!is_valid_checksum(syn)){
+    perror("checksum is invalid");
+    socket->state = INVALID;
+    return socket->sd;
+  }
 
   srand(time(NULL));
   socket->seq_number = rand(); //create random sequence number
@@ -239,8 +245,8 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   //socket->ack_number = syn->seq_number+1;
 
   //create header of synack
-  synack.seq_number = socket->seq_number;
-  synack.ack_number = syn->seq_number + 1;
+  synack.seq_number = htonl(socket->seq_number);
+  synack.ack_number = htonl(syn->seq_number + 1);
   synack.control = 0;
   synack.control = set_bit(synack.control, 12);
   synack.control = set_bit(synack.control, 14);
@@ -250,7 +256,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   synack.future_use1 = 0;
   synack.future_use2 = 0;
   synack.checksum = 0;
-  synack.checksum = crc32(&synack, sizeof(synack));
+  synack.checksum = htonl(crc32(&synack, sizeof(synack)));
 
   bytes_sent = sendto(socket->sd, &synack, sizeof(synack), &socket->address, &socket->address_length);
   if (bytes_sent != sizeof(synack))
@@ -294,6 +300,8 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
   microtcp_header_t client_fin, server_ack, *server_header, *client_ack, *client_finack, client_send_ack;
   ssize_t ret;
   uint32_t checksum_received, checksum_calculated;
+
+if(how == SHUT_RDWR){
 
   if(socket->state == CLOSING_BY_PEER){
 
@@ -446,6 +454,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     socket->state = CLOSED;
 
   }
+}
 
 return socket->sd;
 }
