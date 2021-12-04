@@ -133,54 +133,56 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   char tmp_buf[MICROTCP_RECVBUF_LEN];
 
   srand(time(NULL));
-  socket->seq_number = rand();  // create random sequence number
+  socket->seq_number = rand();                              // create random sequence number
 
-  //create the header for the 1st step of the 3-way handshake (SYN segment)
-  syn = make_header(socket->seq_number, 0, 0, 0, 0, 0, 1, 0);
+  syn = make_header(socket->seq_number, 0, 0, 0, 0, 0, 1, 0);//create header for SYN segment
   syn->checksum = crc32(&synack, sizeof(synack));                             //add checksum
   bytes_sent = sendto(socket->sd, syn, sizeof((*syn)), address, address_len); //send segment
   
-  if(bytes_sent != sizeof(syn))
+  if(bytes_sent != sizeof(syn))                             //check that all bytes were sent
   {
     perror("none or not all bytes of syn were sent\n"); 
     socket->state = INVALID;
     return socket->sd;
   } 
-  socket->seq_number += 1;
+  socket->seq_number += 1;                                         //update socket variables
   socket->packets_send += 1;
   socket->bytes_send += bytes_sent;
 
-  //wait to receive the SYNACK from the specific address
-  do{
+
+  do                                          //receive the SYNACK from the specific address
     ret = recvfrom(socket->sd, tmp_buf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
-  }while(*address != src_addr);
-  synack = tmp_buf;
+  while(*address != src_addr);
 
   // received segment
-  if(ret<0 || ret != MICROTCP_RECVBUF_LEN){
+  if(ret<0)                                             //check that recvfrom was successful
+  {        
     socket->state = UNKNOWN; //TODO: ckeck state
     return socket->sd;
   }
+  synack = tmp_buf;
 
   // check if checksum in received header is valid
-  if(!is_checksum_valid(socket->recvbuf)){
+  if(!is_checksum_valid(socket->recvbuf))                     //check that checksum is valid
+  {
     socket->state = UNKNOWN; //TODO: ckeck state
     return socket->sd;
   }
-
-  // check that SYN and ACK bits are set to 1
-  // check if ACK_received = SYN_sent + 1
-  if( (get_bit(synack->control, 12) == 0) || (get_bit(synack->control, 14) == 0) || (synack->ack_number != socket->seq_number) )
+  
+  if( (get_bit(synack->control, 12) == 0)                    //check if it is a valid SYNACK             
+   || (get_bit(synack->control, 14) == 0) 
+   || (synack->ack_number != socket->seq_number))
   {
     socket->state = INVALID;
     return socket->sd;
   }
-  //received valid SYNACK
-  socket->address = address;
+  socket->address = address;                                         //received valid SYNACK
   socket->address_len = address_len;
   socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(char));
   socket->state = ESTABLISHED;    //TODO: maybe put this at the end of function
   socket->ack_number = synack->seq_number + 1;
+  socket->bytes_received += sizeof(synack);
+  socket->packets_received ++;
 
   // O client λαμβάνει το SYN+ACK πακέτο, αποθηκεύει το sequence number M του server και 
   // στέλνει ένα ACK με ACK number Μ+1 (από εκφώνηση)
@@ -189,14 +191,16 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   ack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 0);
   ack->checksum = crc32(&synack, sizeof(synack)); //add checksum
 
-  //send last ack
-  bytes_sent = sendto(socket->sd, &ack, sizeof(ack), address, address_len);
-  if(bytes_sent != sizeof(ack)){
+  bytes_sent = sendto(socket->sd, &ack, sizeof(ack), address, address_len);  //send last ack
+  if(bytes_sent != sizeof(ack))                    //check if last ack was sent successfully
+  {
     socket->state = INVALID;
     perror("none or not all ack bytes were sent");
     return socket->sd;
   } 
-  socket->seq_number += 1;    // TODO: check this
+  socket->seq_number += 1;                                         //update socket variables
+  socket->packets_send += 1;
+  socket->bytes_send += bytes_sent;
 
   return socket->sd;
 }
