@@ -30,10 +30,10 @@
 microtcp_sock_t
 microtcp_socket (int domain, int type, int protocol)
 {
-  microtcp_socket_t s;
+  microtcp_sock_t s;
   if ((s.sd = socket(domain, SOCK_DGRAM, IPPROTO_UDP)) == -1){
     perror("opening socket");
-    return NULL;
+    return s.sd;
   }
   s.packets_send = 0;
   s.packets_received = 0;
@@ -449,14 +449,14 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 }
 
 //returns the current window
-uint16_t get_unacked (microtcp_socket_t *sock)
+uint16_t get_unacked (microtcp_sock_t *sock)
 {
   // unacked bytes = last byte sent - last byte acked
   return  sock->seq_number - sock->ack_number;
 }
 
 //returns the current window
-uint16_t get_my_rwnd (microtcp_socket_t *sock)
+uint16_t get_my_rwnd (microtcp_sock_t *sock)
 {
   // unread bytes = last byte received - last byte read
   //return MICROTCP_WIN_SIZE - (?? - sock->bytes_received)
