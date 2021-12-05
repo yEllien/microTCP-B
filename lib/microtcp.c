@@ -203,13 +203,13 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   // received segment
   if(ret<=0){
-    socket->state = UNKNOWN; //TODO: ckeck state
+    socket->state = UNKNOWN;
     return socket->sd;
   }
 
   // check if checksum in received header is valid
   if(!is_checksum_valid(socket->recvbuf, ret)){
-    socket->state = UNKNOWN; //TODO: ckeck state
+    socket->state = UNKNOWN;
     return socket->sd;
   }
 
@@ -225,7 +225,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   socket->address = *address;
   socket->address_len = address_len;
   socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(char));
-  socket->state = ESTABLISHED;    //TODO: maybe put this at the end of function
+  socket->state = ESTABLISHED;  
   socket->ack_number = synack.seq_number + 1;
 
   //make header of last ack
