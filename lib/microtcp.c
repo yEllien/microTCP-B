@@ -33,8 +33,10 @@ microtcp_socket (int domain, int type, int protocol)
   microtcp_sock_t s;
   if ((s.sd = socket(domain, SOCK_DGRAM, IPPROTO_UDP)) == -1){
     perror("opening socket");
+    s.state = INVALID;
     return s;
   }
+  
   s.packets_send = 0;
   s.packets_received = 0;
   s.packets_lost = 0;
