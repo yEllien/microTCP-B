@@ -245,6 +245,8 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 }
 
 
+/* microtcp.h: microtcp_access returns 0 on success */
+
 int
 microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
                  socklen_t address_len)
