@@ -33,7 +33,7 @@ microtcp_socket (int domain, int type, int protocol)
   microtcp_sock_t s;
   if ((s.sd = socket(domain, SOCK_DGRAM, IPPROTO_UDP)) == -1){
     perror("opening socket");
-    return s.sd;
+    return s;
   }
   s.packets_send = 0;
   s.packets_received = 0;
@@ -93,7 +93,7 @@ static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
   if(SYN) set_bit(tmp_control, SYN_F);
   if(FIN) set_bit(tmp_control, FIN_F);
   header.control = htons(tmp_control);
-  header.checksum = htonl(crc32(&header, sizeof(header)));
+  header.checksum = htonl(crc32((uint8_t *)(&header), sizeof(header)));
 
   return header;
 }
@@ -103,15 +103,15 @@ static microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header)
 {
   microtcp_header_t hbo_header; // = malloc(sizeof(microtcp_header_t));
 
-  hbo_header->seq_number = ntohl(nbo_header->seq_number);
-  hbo_header->ack_number = ntohl(nbo_header->ack_number);
-  hbo_header->control = ntohs(nbo_header->control);
-  hbo_header->window = ntohs(nbo_header->window);
-  hbo_header->data_len = ntohl(nbo_header->data_len);
-  hbo_header->future_use0 = ntohl(nbo_header->future_use0);
-  hbo_header->future_use1 = ntohl(nbo_header->future_use1);
-  hbo_header->future_use2 = ntohl(nbo_header->future_use2);
-  hbo_header->checksum = ntohl(nbo_header->checksum);
+  hbo_header.seq_number = ntohl(nbo_header->seq_number);
+  hbo_header.ack_number = ntohl(nbo_header->ack_number);
+  hbo_header.control = ntohs(nbo_header->control);
+  hbo_header.window = ntohs(nbo_header->window);
+  hbo_header.data_len = ntohl(nbo_header->data_len);
+  hbo_header.future_use0 = ntohl(nbo_header->future_use0);
+  hbo_header.future_use1 = ntohl(nbo_header->future_use1);
+  hbo_header.future_use2 = ntohl(nbo_header->future_use2);
+  hbo_header.checksum = ntohl(nbo_header->checksum);
 
   return hbo_header;
 }
