@@ -93,6 +93,7 @@ static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
   if(SYN) set_bit(tmp_control, SYN_F);
   if(FIN) set_bit(tmp_control, FIN_F);
   header.control = htons(tmp_control);
+  header.checksum = htonl(crc32(&header, sizeof(header)));
 
   return header;
 }
@@ -100,7 +101,7 @@ static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
 //returns the given header in host byte order
 static microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header)
 {
-  microtcp_header_t hbo_header;
+  microtcp_header_t hbo_header; // = malloc(sizeof(microtcp_header_t));
 
   hbo_header->seq_number = ntohl(nbo_header->seq_number);
   hbo_header->ack_number = ntohl(nbo_header->ack_number);
@@ -110,7 +111,9 @@ static microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header)
   hbo_header->future_use0 = ntohl(nbo_header->future_use0);
   hbo_header->future_use1 = ntohl(nbo_header->future_use1);
   hbo_header->future_use2 = ntohl(nbo_header->future_use2);
-  hbo_header->checksum = ntohl(nbo_header->future_use2);
+  hbo_header->checksum = ntohl(nbo_header->checksum);
+
+  return hbo_header;
 }
 
 //returns 1 if header control is valid according to the given values, 0 otherwise
@@ -173,8 +176,8 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   /* create the header for the 1st step of the 3-way handshake (SYN segment) */
   syn = make_header(socket->seq_number, 0, 0, 0, 0, 0, 1, 0);
-  syn->checksum = crc32(&synack, sizeof(synack));                             
-  bytes_sent = sendto(socket->sd, syn, sizeof((*syn)), address, address_len); 
+  //syn->checksum = crc32(&synack, sizeof(synack));                             //add checksum
+  bytes_sent = sendto(socket->sd, syn, sizeof((*syn)), address, address_len); //send segment
   
   if(bytes_sent != sizeof(syn))
   {
@@ -224,7 +227,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   //make header of last ack
   ack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 0);
-  ack->checksum = crc32(&synack, sizeof(synack)); //add checksum
+  //ack->checksum = crc32(&synack, sizeof(synack)); //add checksum
 
   //send last ack
   bytes_sent = sendto(socket->sd, &ack, sizeof(ack), address, address_len);
@@ -280,7 +283,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
 
   //create header of SYNACK
   synack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 1, 0);
-  synack.checksum = htonl(crc32(&synack, sizeof(synack)));
+  //synack.checksum = htonl(crc32(&synack, sizeof(synack)));
 
   //send SYNACK
   bytes_sent = sendto(socket->sd, &synack, sizeof(synack), &socket->address, &socket->address_length);
@@ -341,10 +344,11 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     //SEND FINACK, RECEIVE ACK
     /* create FIN ACK segment */
     finack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 1);
-    finack.checksum = htonl(crc32(&finack, sizeof(finack)));
-
+    //finack.checksum = htonl(crc32(&finack, sizeof(finack)));
+    
     /* send FIN ACK to client */
     ret = sendto(socket->sd, &finack, sizeof(finack), 0, socket->address, socket->address_len);
+    /* server creates FIN ACK segment */
 
     /* if sendto returned error value or not all header bytes were sent return invalid socket */
     if(ret != sizeof(finack))
@@ -411,7 +415,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
 
       /* client creates ACK segment to send to server */
       ack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 0);
-      ack.checksum =  crc32(&ack, sizeof(ack));
+      //ack.checksum =  crc32(&ack, sizeof(ack));
 
       /* send ACK to server */
       ret = sendto(socket->sd, &ack, sizeof(ack), 0, socket->address, socket->address_len);
