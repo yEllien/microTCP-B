@@ -93,6 +93,7 @@ static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
   if(SYN) set_bit(tmp_control, SYN_F);
   if(FIN) set_bit(tmp_control, FIN_F);
   header.control = htons(tmp_control);
+  header.checksum = htonl(crc32(&header, sizeof(header)));
 
   return header;
 }
@@ -100,7 +101,7 @@ static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
 //returns the given header in host byte order
 static microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header)
 {
-  microtcp_header_t hbo_header = malloc(sizeof(microtcp_header_t));
+  microtcp_header_t hbo_header; // = malloc(sizeof(microtcp_header_t));
 
   hbo_header->seq_number = ntohl(nbo_header->seq_number);
   hbo_header->ack_number = ntohl(nbo_header->ack_number);
@@ -110,7 +111,9 @@ static microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header)
   hbo_header->future_use0 = ntohl(nbo_header->future_use0);
   hbo_header->future_use1 = ntohl(nbo_header->future_use1);
   hbo_header->future_use2 = ntohl(nbo_header->future_use2);
-  hbo_header->checksum = ntohl(nbo_header->future_use2);
+  hbo_header->checksum = ntohl(nbo_header->checksum);
+
+  return hbo_header;
 }
 
 static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, uint8_t RST, uint8_t SYN, uint8_t FIN)
@@ -172,7 +175,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   //create the header for the 1st step of the 3-way handshake (SYN segment)
   syn = make_header(socket->seq_number, 0, 0, 0, 0, 0, 1, 0);
-  syn->checksum = crc32(&synack, sizeof(synack));                             //add checksum
+  //syn->checksum = crc32(&synack, sizeof(synack));                             //add checksum
   bytes_sent = sendto(socket->sd, syn, sizeof((*syn)), address, address_len); //send segment
   
   if(bytes_sent != sizeof(syn))
@@ -223,7 +226,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   //make header of last ack
   ack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 0);
-  ack->checksum = crc32(&synack, sizeof(synack)); //add checksum
+  //ack->checksum = crc32(&synack, sizeof(synack)); //add checksum
 
   //send last ack
   bytes_sent = sendto(socket->sd, &ack, sizeof(ack), address, address_len);
@@ -279,7 +282,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
 
   //create header of SYNACK
   synack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 1, 0);
-  synack.checksum = htonl(crc32(&synack, sizeof(synack)));
+  //synack.checksum = htonl(crc32(&synack, sizeof(synack)));
 
   //send SYNACK
   bytes_sent = sendto(socket->sd, &synack, sizeof(synack), &socket->address, &socket->address_length);
@@ -341,7 +344,7 @@ if(how == SHUT_RDWR){
 
     /* server creates FIN ACK segment */
     server_ack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 1);
-    server_ack.checksum = htonl(crc32(&server_ack, sizeof(server_ack)));
+    //server_ack.checksum = htonl(crc32(&server_ack, sizeof(server_ack)));
 
     /* server sends FIN ACK to client */
     ret = sendto(socket->sd, &server_ack, sizeof(server_ack), 0, socket->address, socket->address_len);
@@ -385,7 +388,7 @@ if(how == SHUT_RDWR){
 
     /* client creates FIN ACK segment */
     client_fin = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 1);
-    client_fin.checksum =  crc32(&client_fin, sizeof(client_fin));
+    //client_fin.checksum =  crc32(&client_fin, sizeof(client_fin));
 
     /* send FIN ACK to server */
     ret = sendto(socket->sd, &client_fin, sizeof(client_fin), 0, socket->address, socket->address_len);
@@ -448,7 +451,7 @@ if(how == SHUT_RDWR){
 
     /* client creates ACK segment to send to server */
     client_send_ack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 0);
-    client_send_ack.checksum =  crc32(&client_fin, sizeof(client_fin));
+    //client_send_ack.checksum =  crc32(&client_fin, sizeof(client_fin));
 
     /* send ACK to server */
     ret = sendto(socket->sd, &client_send_ack, sizeof(client_send_ack), 0, socket->address, socket->address_len);
