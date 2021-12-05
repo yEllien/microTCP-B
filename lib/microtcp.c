@@ -458,17 +458,3 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 {
   /* Your code here */
 }
-
-//returns the current window
-uint16_t get_unacked (microtcp_sock_t *sock)
-{
-  // unacked bytes = last byte sent - last byte acked
-  return  sock->seq_number - sock->ack_number;
-}
-
-//returns the current window
-uint16_t get_my_rwnd (microtcp_sock_t *sock)
-{
-  // unread bytes = last byte received - last byte read
-  //return MICROTCP_WIN_SIZE - (?? - sock->bytes_received)
-}
