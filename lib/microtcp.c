@@ -133,6 +133,15 @@ static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, 
   return 1;
 }
 
+static int is_equal_addresses (const struct sockaddr a, const struct sockaddr b)
+{
+  if (a.sa_family != b.sa_family)
+    return 0;
+  if (strcmp(a.sa_data, b.sa_data) != 0)
+    return 0;
+  else return 1;
+}
+
 
 /* Calculates checksum of header recv_header
    Returns 1 if checksum calculated is equal to 
@@ -140,7 +149,7 @@ static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, 
 
 static int is_checksum_valid(const uint8_t *recv_buf){
 
-  microtcp_header_t *tmp_header, *recv_header = recv_buf;
+  microtcp_header_t *tmp_header, *recv_header = (microtcp_header_t *)recv_buf;
   uint32_t received_checksum, calculated_checksum;
   int i = 0, size = 0;
 
@@ -169,7 +178,8 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
                   socklen_t address_len)
 {
   microtcp_header_t syn, synack, ack;
-  struct sockaddr src_addr, src_addr_length;
+  struct sockaddr src_addr;
+  socklen_t src_addr_length;
   ssize_t bytes_sent, ret;
   char tmp_buf[MICROTCP_RECVBUF_LEN];
 
@@ -179,7 +189,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   /* create the header for the 1st step of the 3-way handshake (SYN segment) */
   syn = make_header(socket->seq_number, 0, 0, 0, 0, 0, 1, 0);
   //syn->checksum = crc32(&synack, sizeof(synack));                             //add checksum
-  bytes_sent = sendto(socket->sd, syn, sizeof((*syn)), address, address_len); //send segment
+  bytes_sent = sendto(socket->sd, &syn, sizeof((syn)), MSG_CONFIRM, address, address_len); //send segment
   
   if(bytes_sent != sizeof(syn))
   {
@@ -194,8 +204,9 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   //wait to receive the SYNACK from the specific address
   do{
     ret = recvfrom(socket->sd, tmp_buf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
-  }while(*address != src_addr);
-  synack = get_hbo_header(tmp_buf);
+  }while(!is_equal_addresses(*address, src_addr));
+  
+  synack = get_hbo_header((microtcp_header_t *)&tmp_buf);
 
   // received segment
   if(ret<0){
@@ -212,13 +223,13 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   // check that SYN and ACK bits are set to 1
   // check if ACK_received = SYN_sent + 1
   if( !is_header_control_valid(&synack, 1, 0, 1, 0)
-   || (notohl(synack->ack_number) != socket->seq_number) )
+   || (notohl(synack.ack_number) != socket->seq_number) )
   {
     socket->state = INVALID;
     return socket->sd;
   }
   //received valid SYNACK
-  socket->address = address;
+  socket->address = *address;
   socket->address_len = address_len;
   socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(char));
   socket->state = ESTABLISHED;    //TODO: maybe put this at the end of function
