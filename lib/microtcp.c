@@ -180,7 +180,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   microtcp_header_t syn, synack, ack;
   struct sockaddr src_addr;
   socklen_t src_addr_length;
-  ssize_t bytes_sent, recv;
+  ssize_t bytes_sent, ret;
   char tmp_buf[MICROTCP_RECVBUF_LEN];
 
   srand(time(NULL));
@@ -203,19 +203,19 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   //wait to receive the SYNACK from the specific address
   do{
-    recv = recvfrom(socket->sd, tmp_buf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
+    ret = recvfrom(socket->sd, tmp_buf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
   }while(!is_equal_addresses(*address, src_addr));
   
   synack = get_hbo_header((microtcp_header_t *)&tmp_buf);
 
   // received segment
-  if(recv<=0){
+  if(ret<=0){
     socket->state = UNKNOWN; //TODO: ckeck state
     return socket->sd;
   }
 
   // check if checksum in received header is valid
-  if(!is_checksum_valid(socket->recvbuf, recv)){
+  if(!is_checksum_valid(socket->recvbuf, ret)){
     socket->state = UNKNOWN; //TODO: ckeck state
     return socket->sd;
   }
@@ -267,20 +267,20 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   microtcp_header_t syn, synack, ack;
   struct sockaddr src_addr;
   socklen_t src_addr_length;
-  ssize_t bytes_sent, recv; 
+  ssize_t bytes_sent, ret; 
 
   //receive SYN segment from any address
   do
   {
-    recv = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
-    if (recv > 0)
+    ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
+    if (ret > 0)
       syn = get_hbo_header((microtcp_header_t *)socket->recvbuf);
   } while (!is_header_control_valid(&syn, 0, 0, 1, 0));
   
   //received SYN segment
 
   // checksum validation
-  if(!is_checksum_valid(socket->recvbuf, recv)){
+  if(!is_checksum_valid(socket->recvbuf, ret)){
     perror("checksum is invalid");
     socket->state = INVALID;
     return socket->sd;
@@ -314,11 +314,11 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
 
   do
   {
-    recv = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
+    ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
   } while (!is_equal_addresses(socket->address, src_addr));
   
   //recvfrom failed
-  if (recv <= 0)
+  if (ret <= 0)
   {
     socket->state = INVALID;
     perror("none or not all bytes of ACK were received\n");
