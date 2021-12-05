@@ -18,8 +18,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-//TODO: add timeout option for receive
-
 #include "microtcp.h"
 #include "../utils/crc32.h"
 #include <stdio.h>
@@ -104,8 +102,8 @@ static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
 //returns the given header in host byte order
 static microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header)
 {
-  microtcp_header_t hbo_header; // = malloc(sizeof(microtcp_header_t));
-
+  microtcp_header_t hbo_header; 
+  
   hbo_header.seq_number = ntohl(nbo_header->seq_number);
   hbo_header.ack_number = ntohl(nbo_header->ack_number);
   hbo_header.control = ntohs(nbo_header->control);
@@ -155,12 +153,7 @@ static int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len){
   int i = 0, size = 0;
 
   tmp_header = malloc(msg_len);
-  /*
-  for(i=0 ; i<size ; i++){ 
-    tmp_header[i] = recv_header[i];
-  }
-  */
-
+  
   memcpy(tmp_header, recv_buf, size);
 
   /* check sum in received header */
@@ -234,9 +227,6 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(char));
   socket->state = ESTABLISHED;    //TODO: maybe put this at the end of function
   socket->ack_number = synack.seq_number + 1;
-
-  // O client λαμβάνει το SYN+ACK πακέτο, αποθηκεύει το sequence number M του server και 
-  // στέλνει ένα ACK με ACK number Μ+1 (από εκφώνηση)
 
   //make header of last ack
   ack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 0);
@@ -423,6 +413,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
       }
 
       finack = get_hbo_header((microtcp_header_t*)socket->recvbuf);
+
       /* check that FIN and ACK bits are set to 1 */
       if(finack.ack_number != socket->seq_number ||
       !is_header_control_valid(&finack, 1,0,0,1)){
