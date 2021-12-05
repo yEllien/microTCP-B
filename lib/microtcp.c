@@ -203,13 +203,13 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   // received segment
   if(ret<=0){
-    socket->state = UNKNOWN;
+    socket->state = ;
     return socket->sd;
   }
 
   // check if checksum in received header is valid
   if(!is_checksum_valid(socket->recvbuf, ret)){
-    socket->state = UNKNOWN;
+    socket->state = INVALID;
     return socket->sd;
   }
 
@@ -224,7 +224,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   //received valid SYNACK
   socket->address = *address;
   socket->address_len = address_len;
-  socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(char));
+  socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(uint8_t));
   socket->state = ESTABLISHED;  
   socket->ack_number = synack.seq_number + 1;
 
@@ -251,7 +251,7 @@ int
 microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
                  socklen_t address_len)
 {
-  socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(char));
+  socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(uint8_t));
   socket->buf_fill_level = 0;
   socket->init_win_size = MICROTCP_WIN_SIZE;
   socket->curr_win_size = MICROTCP_WIN_SIZE;
@@ -441,6 +441,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     }
     
     socket->state = CLOSED;
+    free(socket->recvbuf);
     return socket->sd;
   }
   return socket->sd;
