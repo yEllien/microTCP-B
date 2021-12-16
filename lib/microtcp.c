@@ -371,7 +371,60 @@ ssize_t
 microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
                int flags)
 {
-  /* Your code here */
+  int                 i;
+  int                 segments_count;
+  int                 sent_segments;
+  size_t              seq_no;
+  ssize_t             bytes_sent;
+  uint8_t           **segments; //array of segments
+  uint32_t            data_len;
+  microtcp_header_t   tmp_header;
+
+  segments_count = length/MICROTCP_MSS + (length%MICROTCP_MSS != 0);
+  sent_segments = 0;
+  seq_no = socket->seq_number;
+  data_len = MICROTCP_MSS - sizeof(microtcp_header_t);
+
+  /* create segments */
+  segments = malloc(segments_count*sizeof(uint8_t*));
+  for (i=0; i<segments_count; i++)
+  {
+    //allocate size
+    segments[i] = malloc(sizeof(uint8_t)*MICROTCP_MSS);
+    
+    //make header TODO: what sequence number?
+    make_header_auto(socket, segments[i]);
+    //fill data
+    memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], data_len);
+
+    socket->seq_number += MICROTCP_MSS;
+  }
+
+  while (sent_segments!=segments_count)
+  {
+    /* send segments according to cwnd*/
+    for (i=0; i<cwnd; i++)
+    {
+      bytes_sent = sendto(socket->sd, segments[sent_segments+i], MICROTCP_MSS, 
+                      /*TODO: this field!*/, socket->address, socket->address_len);
+
+      //if send fails
+      if (bytes_sent != MICROTCP_MSS)
+      {
+        //will send again
+        --i;
+        continue;
+      }
+
+      /*TODO: not sure about this, may be better somewhere else (check notes) */
+    }
+
+    /* receive acks  TODO: acknowledgement for segment i 
+      is the sequence number of segment i+1 ???*/
+
+  }
+
+
 }
 
 

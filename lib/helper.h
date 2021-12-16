@@ -20,37 +20,39 @@ typedef enum
 
 /* Sets given control bit in header to 1 */
 
-static uint16_t set_bit (uint16_t data, uint16_t pos);
+uint16_t set_bit (uint16_t data, uint16_t pos);
 
 
 
 
 /* Returns 0 if bit not set, else !=0 */
 
-static uint16_t get_bit (uint16_t data, uint16_t pos);
+uint16_t get_bit (uint16_t data, uint16_t pos);
 
 
 
 
 /* Creates a header according to the arguments */
 
-static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number, 
+microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number, 
                                  uint16_t window, uint32_t data_len,
                                  uint8_t ACK, uint8_t RST, uint8_t SYN, uint8_t FIN);
 
 
 
+void make_header_auto (microtcp_sock_t *socket, uint8_t *header);
+
 
 /* Returns the header in the argument in host byte order */
 
-static microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header);
+microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header);
 
 
 
 
 /* Returns 1 if header control is valid according to the given values, 0 otherwise */
 
-static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, uint8_t RST, uint8_t SYN, uint8_t FIN);
+int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, uint8_t RST, uint8_t SYN, uint8_t FIN);
 
 
 
@@ -64,14 +66,14 @@ int is_finack(void* header);
 
 /* Returns 1 if the given addresses are equal */
 
-static int is_equal_addresses (const struct sockaddr a, const struct sockaddr b);
+int is_equal_addresses (const struct sockaddr a, const struct sockaddr b);
 
 
 
 
 /* Returns 1 if checksum is valid, 0 otherwise */
 
-static int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len);
+int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len);
 
 
 

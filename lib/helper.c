@@ -1,4 +1,5 @@
 #include "helper.h"
+#include <string.h>
 
 
 
@@ -42,6 +43,18 @@ static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
   header.checksum = htonl(crc32((uint8_t *)(&header), sizeof(header)));
 
   return header;
+}
+
+
+
+void make_header_auto (microtcp_sock_t *socket, uint8_t *header)
+{
+	microtcp_header_t tmp_header;
+
+	tmp_header = make_header(socket->seq_number, socket->ack_number, 
+													 socket->curr_win_size, data_len, 0, 0, 0, 0);
+
+	memcpy(header, &tmp_header, sizeof(microtcp_header_t));
 }
 
 
