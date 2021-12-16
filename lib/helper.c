@@ -67,7 +67,8 @@ static microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header)
 
 
 
-static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, uint8_t RST, uint8_t SYN, uint8_t FIN)
+static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, 
+																	  uint8_t RST, uint8_t SYN, uint8_t FIN)
 {
   if(ACK && get_bit(hbo_header->control, ACK_F) == 0)
     return 0;
@@ -84,7 +85,8 @@ static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, 
 
 
 
-int is_finack(void* buffer){
+int is_finack(void* buffer)
+{
   return is_header_control_valid(buffer, 1, 0, 0, 1);
 }
 
@@ -103,7 +105,8 @@ static int is_equal_addresses (const struct sockaddr a, const struct sockaddr b)
 
 
 
-static int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len){
+static int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len)
+{
 
   microtcp_header_t *tmp_header;
   uint32_t received_checksum, calculated_checksum;
@@ -125,14 +128,16 @@ static int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len){
 
 
 
-int corrupt_packet(void *buffer){
+int corrupt_packet(void *buffer)
+{
   return !is_checksum_valid(buffer);
 }
 
 
 
 
-int received_all_bytes(microtcp_sock_t *socket, void *buffer, ssize_t received){
+int received_all_bytes(microtcp_sock_t *socket, void *buffer, ssize_t received)
+{
   microtcp_header_t packet;
   uint32_t data_len;
   uint64_t header_length; 
@@ -149,7 +154,8 @@ int received_all_bytes(microtcp_sock_t *socket, void *buffer, ssize_t received){
 
 
 
-int is_valid_seq(microtcp_sock_t *socket, void *buffer, size_t bytes_received){
+int is_valid_seq(microtcp_sock_t *socket, void *buffer, size_t bytes_received)
+{
   microtcp_header_t packet;
   uint32_t seq, data_len;
 
@@ -167,18 +173,47 @@ int is_valid_seq(microtcp_sock_t *socket, void *buffer, size_t bytes_received){
 
 
 
-void send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received){
+void send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received)
+{
 
+	/* if packet is corrupted send duplicate ack */
+	if (corrupt_packet(buffer))
+	{
+		send_ack_type(socket, buffer, DUPLICATE);
+		return -1;
+	}
+
+  if (is_finack(buffer))
+  {
+    socket->state = CLOSING_BY_PEER;
+    microtcp_shutdown(socket, SHUT_RDWR);
+    return -1;
+  }
+
+  /* received packet with data */
+  if (!is_valid_seq(socket, buffer, length) || !received_all_bytes(socket, buffer, bytes_received))
+	{
+  	send_ack_type(socket, buffer, DUPLICATE);
+		return -1;
+  } 
+
+  send_ack_type(socket, buffer, REGULAR);
+	//TODO: ?? send data to application layer
+  recv_update_socket_fields(socket, buffer, bytes_received);
+	
+	//TODO: flow control
+	return bytes_received;
 }
 
 
 
 
-void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t flag){
+void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t flag)
+{
   microtcp_header_t packet, ack;
   uint32_t seq, data_len;
 
-  if(flag != DUPLICATE){
+  if(flag == REGULAR){
     /* not sending a duplicate ack so we have to extract seq_num and data_length 
     from header to calculate the new ack num we want to send */
     packet = get_hbo_header(buffer);
@@ -198,14 +233,15 @@ void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t fl
 
 
 
-void recv_update_socket_fields(microtcp_sock_t *socket, const void* buffer, const ssize_t bytes_received){
-    microtcp_header_t packet = get_hbo_header(buffer);
-    uint32_t payload = packet.data_len;
-
-    socket->packets_received++;
-    socket->bytes_received += payload;
-    socket->buf_fill_level += bytes_received;
-    //update window
+void recv_update_socket_fields(microtcp_sock_t *socket, const void* buffer, 
+															 const ssize_t bytes_received)
+{
+  microtcp_header_t packet = get_hbo_header(buffer);
+  uint32_t payload = packet.data_len;
+  socket->packets_received++;
+  socket->bytes_received += payload;
+  socket->buf_fill_level += bytes_received;
+  //update window
 }
 
 

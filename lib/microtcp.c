@@ -27,6 +27,9 @@
 #include <netinet/in.h>
 #include "helper.h"
 
+
+
+
 microtcp_sock_t
 microtcp_socket (int domain, int type, int protocol)
 {
@@ -51,6 +54,9 @@ microtcp_socket (int domain, int type, int protocol)
   s.state = UNKNOWN;
   return s;
 }
+
+
+
 
 int
 microtcp_bind (microtcp_sock_t *socket, const struct sockaddr *address,
@@ -366,27 +372,5 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 
   if(bytes_received<0) return -1;
   
-  /* if packet is corrupted send duplicate ack */
-  if(corrupt_packet(buffer)){
-    send_ack(socket, buffer, DUPLICATE);
-    return -1;
-  }
-
-  if(is_finack(buffer)){
-    socket->state = CLOSING_BY_PEER;
-    microtcp_shutdown(socket, SHUT_RDWR);
-    return -1;
-  }
-
-  /* received packet with data */
-  if(is_valid_seq(socket, buffer, length) && received_all_bytes(socket, buffer, bytes_received)){
-    send_ack(socket, buffer, NODUP);
-    // send data to application layer
-    recv_update_socket_fields(socket, buffer, bytes_received);
-    return bytes_received;
-  } //TODO: flow control
-
-  send_ack(socket, buffer, DUPLICATE);
-
-return -1;
+  return send_ack(socket, buffer, bytes_received);
 }
