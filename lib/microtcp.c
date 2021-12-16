@@ -25,6 +25,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <netinet/in.h>
+#include "helper.h"
 
 microtcp_sock_t
 microtcp_socket (int domain, int type, int protocol)
@@ -63,108 +64,9 @@ microtcp_bind (microtcp_sock_t *socket, const struct sockaddr *address,
   return rv;
 }
 
-static uint16_t set_bit (uint16_t data, uint16_t pos)
-{
-  return (data|(1 << pos));
-}
-
-//returns 0 if bit not set, else !=0
-static uint16_t get_bit (uint16_t data, uint16_t pos)
-{
-  return ((data >> pos) & 1);
-}
-
-static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number, 
-                                 uint16_t window, uint32_t data_len,
-                                 uint8_t ACK, uint8_t RST, uint8_t SYN, uint8_t FIN)
-{
-  microtcp_header_t header;
-
-  header.seq_number = htonl(seq_number);
-  header.ack_number = htonl(ack_number);
-  header.window = htons(window);
-  header.data_len = htonl(data_len);
-  header.future_use0 = 0;
-  header.future_use1 = 0;
-  header.future_use2 = 0;
-  header.checksum = 0;
-  uint16_t tmp_control = 0;
-  if(ACK) set_bit(tmp_control, ACK_F);
-  if(RST) set_bit(tmp_control, RST_F);
-  if(SYN) set_bit(tmp_control, SYN_F);
-  if(FIN) set_bit(tmp_control, FIN_F);
-  header.control = htons(tmp_control);
-  header.checksum = htonl(crc32((uint8_t *)(&header), sizeof(header)));
-
-  return header;
-}
-
-//returns the given header in host byte order
-static microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header)
-{
-  microtcp_header_t hbo_header; 
-  
-  hbo_header.seq_number = ntohl(nbo_header->seq_number);
-  hbo_header.ack_number = ntohl(nbo_header->ack_number);
-  hbo_header.control = ntohs(nbo_header->control);
-  hbo_header.window = ntohs(nbo_header->window);
-  hbo_header.data_len = ntohl(nbo_header->data_len);
-  hbo_header.future_use0 = ntohl(nbo_header->future_use0);
-  hbo_header.future_use1 = ntohl(nbo_header->future_use1);
-  hbo_header.future_use2 = ntohl(nbo_header->future_use2);
-  hbo_header.checksum = ntohl(nbo_header->checksum);
-
-  return hbo_header;
-}
-
-//returns 1 if header control is valid according to the given values, 0 otherwise
-static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, uint8_t RST, uint8_t SYN, uint8_t FIN)
-{
-  if(ACK && get_bit(hbo_header->control, ACK_F) == 0)
-    return 0;
-  if(RST && get_bit(hbo_header->control, RST_F) == 0)
-    return 0;
-  if(SYN && get_bit(hbo_header->control, SYN_F) == 0)
-    return 0;
-  if(FIN && get_bit(hbo_header->control, FIN_F) == 0)
-    return 0;
-
-  return 1;
-}
-
-static int is_equal_addresses (const struct sockaddr a, const struct sockaddr b)
-{
-  if (a.sa_family != b.sa_family)
-    return 0;
-  if (strcmp(a.sa_data, b.sa_data) != 0)
-    return 0;
-  else return 1;
-}
-
-
 /* Calculates checksum of header recv_header
    Returns 1 if checksum calculated is equal to 
    checksum field of header else returns 0 */
-
-static int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len){
-
-  microtcp_header_t *tmp_header;
-  uint32_t received_checksum, calculated_checksum;
-  int i = 0, size = 0;
-
-  tmp_header = malloc(msg_len);
-  
-  memcpy(tmp_header, recv_buf, size);
-
-  /* check sum in received header */
-  received_checksum = ntohl(tmp_header->checksum);
-
-  /* calculate checksum of header for comparison */
-  calculated_checksum = ntohl(crc32(recv_buf, msg_len));
-
-  return (received_checksum == calculated_checksum);
-}
-
 
 int
 microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
@@ -245,8 +147,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 }
 
 
-/* microtcp.h: microtcp_access returns 0 on success */
-
+/* microtcp.h: microtcp_accept returns 0 on success */
 int
 microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
                  socklen_t address_len)
@@ -455,104 +356,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   /* Your code here */
 }
 
-/* check that recvfrom() gets all bytes user wants to receive */
-
-int received_all_bytes(microtcp_sock_t *socket, void *buffer, ssize_t received){
-  microtcp_header_t packet;
-  uint32_t data_len;
-  uint64_t header_length; 
-
-  packet = get_hbo_header(buffer);
-
-  data_len = packet.data_len;
-  header_length = sizeof(microtcp_header_t);
-  //TODO: how to add header_length + data_len
-
-  return received == data_len + header_length;
-}
-
-/* checks that packet in buffer has the expected sequence number (is a continuous packet) */
-/*  WE ASUME THAT BUFFER CONTAINS ONE PACKET */
-
-int is_valid_seq(microtcp_sock_t *socket, void *buffer, size_t bytes_received){
-  microtcp_header_t packet;
-  uint32_t seq, data_len;
-
-  /* check that it's not an ACK */
-  if(!is_header_control_valid((microtcp_header_t *)buffer, 0, 0, 0, 0)) return 0;
-
-  /* find sequence number field */
-  packet = get_hbo_header(buffer);
-  seq = packet.seq_number;
-
-  /* new seq should be equal to the last ack sent */
-  return seq == socket->ack_number;
-}
-
-void update_window_size(microtcp_sock_t *socket){
-
-}
-
-#define DUPLICATE 2
-#define NODUP 0
-
-void send_ack(microtcp_sock_t *socket, void *buffer, int flag){
-  microtcp_header_t packet, ack;
-  uint32_t seq, data_len;
-
-  if(flag != DUPLICATE){
-    /* not sending a duplicate ack so we have to extract seq_num and data_length 
-    from header to calculate the new ack num we want to send */
-    packet = get_hbo_header(buffer);
-    seq = packet.seq_number;
-    data_len = packet.data_len;
-    socket->ack_number = seq + data_len;  //TODO: check this
-  } 
-  /* if sending a dupACK, we just resend prev ack num in socket->ack_number */
-
-  ack = make_header(socket->seq_number, socket->ack_number, socket->curr_win_size, 0, 1, 0, 0, 0);
-  sendto(socket->sd, &ack, sizeof(ack), 0, socket->address, socket->address_len);
-  // check stuff
-} 
-
-/* check if received packet has data or is just an ack */
-
-int is_ack_seq(microtcp_sock_t *socket, void *buffer){
-  microtcp_header_t packet = get_hbo_header(buffer);
-
-  /* is ACK */
-  if(is_header_control_valid(buffer, 1, 0, 0, 0)) return 1;
-  /* it's a packet with data */
-  if(is_header_control_valid(buffer, 0, 0, 0, 0)) return 2;
-
-}
-
-int is_finack(void* buffer){
-  return is_header_control_valid(buffer, 1, 0, 0, 1);
-}
-
-int corrupt_packet(void *buffer){
-  return !is_checksum_valid(buffer);
-}
-
-void recv_update_socket_fields(microtcp_sock_t *socket, const void* buffer, const ssize_t bytes_received){
-    microtcp_header_t packet = get_hbo_header(buffer);
-    uint32_t payload = packet.data_len;
-
-    socket->packets_received++;
-    socket->bytes_received += payload;
-    socket->buf_fill_level += bytes_received;
-    //update window
-}
-
-/* keep track of transmitted packets */
-struct SeqList{
-  uint32_t seq_num;
-  uint32_t data_len;
-  struct SeqList *first;
-  struct SeqList *last;
-  struct SeqList *next;
-}*seq_list;
 
 ssize_t
 microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
@@ -586,18 +389,4 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   send_ack(socket, buffer, DUPLICATE);
 
 return -1;
-}
-
-//returns the current window
-uint16_t get_unacked (microtcp_socket_t *sock)
-{
-  // unacked bytes = last byte sent - last byte acked
-  return  sock->seq_number - sock->ack_number;
-}
-
-//returns the current window
-uint16_t get_my_rwnd (microtcp_socket_t *sock)
-{
-  // unread bytes = last byte received - last byte read
-  //return MICROTCP_WIN_SIZE - (?? - sock->bytes_received)
 }

@@ -52,14 +52,6 @@ typedef enum
   UNKNOWN
 } mircotcp_state_t;
 
-typedef enum
-{
-  ACK_F = 12,
-  RST_F = 13,
-  SYN_F = 14,
-  FIN_F = 15
-} microtcp_flag_bits_t;
-
 /**
  * This is the microTCP socket structure. It holds all the necessary
  * information of each microTCP socket.
