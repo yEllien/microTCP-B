@@ -55,7 +55,7 @@ static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, 
 
 
 
-/* Returns 1 if given header is of a FINACK */
+/* Returns 1 if given packet is a FINACK */
 
 int is_finack(void* header);
 

@@ -47,9 +47,9 @@ static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
 
 
 
-static microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header)
+static microtcp_header_t get_hbo_header (uint8_t *nbo_packet)
 {
-  microtcp_header_t hbo_header; 
+  microtcp_header_t hbo_header, *nbo_header = (microtcp_header_t *) nbo_packet; 
   
   hbo_header.seq_number = ntohl(nbo_header->seq_number);
   hbo_header.ack_number = ntohl(nbo_header->ack_number);
@@ -87,7 +87,7 @@ static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK,
 
 int is_finack(void* buffer)
 {
-  return is_header_control_valid(buffer, 1, 0, 0, 1);
+  return is_header_control_valid(get_hbo_header(buffer), 1, 0, 0, 1);
 }
 
 

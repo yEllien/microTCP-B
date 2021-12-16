@@ -70,6 +70,9 @@ microtcp_bind (microtcp_sock_t *socket, const struct sockaddr *address,
   return rv;
 }
 
+
+
+
 /* Calculates checksum of header recv_header
    Returns 1 if checksum calculated is equal to 
    checksum field of header else returns 0 */
@@ -107,7 +110,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
     ret = recvfrom(socket->sd, tmp_buf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
   }while(!is_equal_addresses(*address, src_addr));
   
-  synack = get_hbo_header((microtcp_header_t *)&tmp_buf);
+  synack = get_hbo_header(tmp_buf);
 
   // received segment
   if(ret<=0){
@@ -153,7 +156,11 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 }
 
 
+
+
+
 /* microtcp.h: microtcp_accept returns 0 on success */
+
 int
 microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
                  socklen_t address_len)
@@ -173,7 +180,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   {
     ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
     if (ret > 0)
-      syn = get_hbo_header((microtcp_header_t *)socket->recvbuf);
+      syn = get_hbo_header(socket->recvbuf);
   } while (!is_header_control_valid(&syn, 0, 0, 1, 0));
   
   //received SYN segment
@@ -224,7 +231,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
     return socket->sd;
   }
 
-  ack = get_hbo_header((microtcp_header_t *)socket->recvbuf);
+  ack = get_hbo_header(socket->recvbuf);
 
   if(!is_checksum_valid(socket->recvbuf, recv)){
     perror("checksum is invalid");
@@ -244,6 +251,9 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   
   return socket->sd;
 }
+
+
+
 
 int
 microtcp_shutdown (microtcp_sock_t *socket, int how)
@@ -289,7 +299,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
         socket->state = INVALID;
         return socket->sd;
       }
-    ack = get_hbo_header((microtcp_header_t *)socket->recvbuf);
+    ack = get_hbo_header(socket->recvbuf);
 
     /* check that seq number and ack number are valid */
     if(ack.seq_number != socket->ack_number || ack.ack_number != socket->seq_number
@@ -321,7 +331,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
         return socket->sd;
       }
 
-      finack = get_hbo_header((microtcp_header_t*)socket->recvbuf);
+      finack = get_hbo_header(socket->recvbuf);
 
       /* check that FIN and ACK bits are set to 1 */
       if(finack.ack_number != socket->seq_number ||
@@ -355,6 +365,8 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
 }
 
 
+
+
 ssize_t
 microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
                int flags)
@@ -363,14 +375,27 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 }
 
 
+
+
 ssize_t
 microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 {
   ssize_t bytes_received;
+  microtcp_header_t header;
+  int i=0;
 
   bytes_received = recvfrom(socket->sd, socket->recvbuf, length, flags, socket->address, socket->address_len);
 
   if(bytes_received<0) return -1;
+
   
-  return send_ack(socket, buffer, bytes_received);
+  header = get_hbo_header(buffer);
+
+  //copy the data to the buffer
+  for (i=0; i<header.data_len; i++)
+  {
+    buffer[i] = socket->recvbuf[sizeof(header)+i];
+  }
+
+  return send_ack(socket, socket->recvbuf, bytes_received);
 }
