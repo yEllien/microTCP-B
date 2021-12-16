@@ -211,18 +211,19 @@ void send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received)
 void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t flag)
 {
   microtcp_header_t packet, ack;
-  uint32_t seq, data_len;
+  uint32_t;
 
-  if(flag == REGULAR){
-    /* not sending a duplicate ack so we have to extract seq_num and data_length 
-    from header to calculate the new ack num we want to send */
+  if (flag == REGULAR)
+	{
+    
+		/* not sending a duplicate ack so we have to extract seq_num and 
+		   data_length from header to calculate the new ack num we want to send */
+
     packet = get_hbo_header(buffer);
-    seq = packet.seq_number;
-    data_len = packet.data_len;
-    socket->ack_number = seq + data_len;  //TODO: check this
+    socket->ack_number = packet.seq_number + packet.data_len;  //TODO: check this . Checked, its OK
   } 
-  /* if sending a dupACK, we just resend prev ack num in socket->ack_number */
 
+  /* if sending a dupACK, we just resend prev ack num in socket->ack_number */
   ack = make_header(socket->seq_number, socket->ack_number, socket->curr_win_size, 0, 1, 0, 0, 0);
   sendto(socket->sd, &ack, sizeof(ack), 0, socket->address, socket->address_len);
   // check stuff
