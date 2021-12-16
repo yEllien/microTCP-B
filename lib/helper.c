@@ -47,11 +47,11 @@ static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
 
 
 
-void make_header_auto (microtcp_sock_t *socket, uint8_t *header)
+void make_header_auto (microtcp_sock_t *socket, uint8_t *header, uint32_t seq_no)
 {
 	microtcp_header_t tmp_header;
 
-	tmp_header = make_header(socket->seq_number, socket->ack_number, 
+	tmp_header = make_header(seq_no, socket->ack_number, 
 													 socket->curr_win_size, data_len, 0, 0, 0, 0);
 
 	memcpy(header, &tmp_header, sizeof(microtcp_header_t));
