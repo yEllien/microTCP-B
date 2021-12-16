@@ -447,6 +447,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
   return socket->sd;
 }
 
+
 ssize_t
 microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
                int flags)
@@ -454,8 +455,149 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   /* Your code here */
 }
 
+/* check that recvfrom() gets all bytes user wants to receive */
+
+int received_all_bytes(microtcp_sock_t *socket, void *buffer, ssize_t received){
+  microtcp_header_t packet;
+  uint32_t data_len;
+  uint64_t header_length; 
+
+  packet = get_hbo_header(buffer);
+
+  data_len = packet.data_len;
+  header_length = sizeof(microtcp_header_t);
+  //TODO: how to add header_length + data_len
+
+  return received == data_len + header_length;
+}
+
+/* checks that packet in buffer has the expected sequence number (is a continuous packet) */
+/*  WE ASUME THAT BUFFER CONTAINS ONE PACKET */
+
+int is_valid_seq(microtcp_sock_t *socket, void *buffer, size_t bytes_received){
+  microtcp_header_t packet;
+  uint32_t seq, data_len;
+
+  /* check that it's not an ACK */
+  if(!is_header_control_valid((microtcp_header_t *)buffer, 0, 0, 0, 0)) return 0;
+
+  /* find sequence number field */
+  packet = get_hbo_header(buffer);
+  seq = packet.seq_number;
+
+  /* new seq should be equal to the last ack sent */
+  return seq == socket->ack_number;
+}
+
+void update_window_size(microtcp_sock_t *socket){
+
+}
+
+#define DUPLICATE 2
+#define NODUP 0
+
+void send_ack(microtcp_sock_t *socket, void *buffer, int flag){
+  microtcp_header_t packet, ack;
+  uint32_t seq, data_len;
+
+  if(flag != DUPLICATE){
+    /* not sending a duplicate ack so we have to extract seq_num and data_length 
+    from header to calculate the new ack num we want to send */
+    packet = get_hbo_header(buffer);
+    seq = packet.seq_number;
+    data_len = packet.data_len;
+    socket->ack_number = seq + data_len;  //TODO: check this
+  } 
+  /* if sending a dupACK, we just resend prev ack num in socket->ack_number */
+
+  ack = make_header(socket->seq_number, socket->ack_number, socket->curr_win_size, 0, 1, 0, 0, 0);
+  sendto(socket->sd, &ack, sizeof(ack), 0, socket->address, socket->address_len);
+  // check stuff
+} 
+
+/* check if received packet has data or is just an ack */
+
+int is_ack_seq(microtcp_sock_t *socket, void *buffer){
+  microtcp_header_t packet = get_hbo_header(buffer);
+
+  /* is ACK */
+  if(is_header_control_valid(buffer, 1, 0, 0, 0)) return 1;
+  /* it's a packet with data */
+  if(is_header_control_valid(buffer, 0, 0, 0, 0)) return 2;
+
+}
+
+int is_finack(void* buffer){
+  return is_header_control_valid(buffer, 1, 0, 0, 1);
+}
+
+int corrupt_packet(void *buffer){
+  return !is_checksum_valid(buffer);
+}
+
+void recv_update_socket_fields(microtcp_sock_t *socket, const void* buffer, const ssize_t bytes_received){
+    microtcp_header_t packet = get_hbo_header(buffer);
+    uint32_t payload = packet.data_len;
+
+    socket->packets_received++;
+    socket->bytes_received += payload;
+    socket->buf_fill_level += bytes_received;
+    //update window
+}
+
+/* keep track of transmitted packets */
+struct SeqList{
+  uint32_t seq_num;
+  uint32_t data_len;
+  struct SeqList *first;
+  struct SeqList *last;
+  struct SeqList *next;
+}*seq_list;
+
 ssize_t
 microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 {
-  /* Your code here */
+  ssize_t bytes_received;
+
+  bytes_received = recvfrom(socket->sd, socket->recvbuf, length, flags, socket->address, socket->address_len);
+
+  if(bytes_received<0) return -1;
+  
+  /* if packet is corrupted send duplicate ack */
+  if(corrupt_packet(buffer)){
+    send_ack(socket, buffer, DUPLICATE);
+    return -1;
+  }
+
+  if(is_finack(buffer)){
+    socket->state = CLOSING_BY_PEER;
+    microtcp_shutdown(socket, SHUT_RDWR);
+    return -1;
+  }
+
+  /* received packet with data */
+  if(is_valid_seq(socket, buffer, length) && received_all_bytes(socket, buffer, bytes_received)){
+    send_ack(socket, buffer, NODUP);
+    // send data to application layer
+    recv_update_socket_fields(socket, buffer, bytes_received);
+    return bytes_received;
+  } //TODO: flow control
+
+  send_ack(socket, buffer, DUPLICATE);
+
+return -1;
+}
+
+//returns the current window
+uint16_t get_unacked (microtcp_socket_t *sock)
+{
+  // unacked bytes = last byte sent - last byte acked
+  return  sock->seq_number - sock->ack_number;
+}
+
+//returns the current window
+uint16_t get_my_rwnd (microtcp_socket_t *sock)
+{
+  // unread bytes = last byte received - last byte read
+  //return MICROTCP_WIN_SIZE - (?? - sock->bytes_received)
 }
