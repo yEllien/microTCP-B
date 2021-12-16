@@ -10,6 +10,7 @@ static uint16_t set_bit (uint16_t data, uint16_t pos)
 
 
 
+
 static uint16_t get_bit (uint16_t data, uint16_t pos)
 {
   return ((data >> pos) & 1);
@@ -83,6 +84,13 @@ static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, 
 
 
 
+int is_finack(void* buffer){
+  return is_header_control_valid(buffer, 1, 0, 0, 1);
+}
+
+
+
+
 static int is_equal_addresses (const struct sockaddr a, const struct sockaddr b)
 {
   if (a.sa_family != b.sa_family)
@@ -112,6 +120,13 @@ static int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len){
   calculated_checksum = ntohl(crc32(recv_buf, msg_len));
 
   return (received_checksum == calculated_checksum);
+}
+
+
+
+
+int corrupt_packet(void *buffer){
+  return !is_checksum_valid(buffer);
 }
 
 
@@ -152,7 +167,14 @@ int is_valid_seq(microtcp_sock_t *socket, void *buffer, size_t bytes_received){
 
 
 
-void send_ack(microtcp_sock_t *socket, void *buffer, int flag){
+void send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received){
+
+}
+
+
+
+
+void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t flag){
   microtcp_header_t packet, ack;
   uint32_t seq, data_len;
 
@@ -172,31 +194,6 @@ void send_ack(microtcp_sock_t *socket, void *buffer, int flag){
 } 
 
 
-
-
-int is_ack_seq(microtcp_sock_t *socket, void *buffer){
-  microtcp_header_t packet = get_hbo_header(buffer);
-
-  /* is ACK */
-  if(is_header_control_valid(buffer, 1, 0, 0, 0)) return 1;
-  /* it's a packet with data */
-  if(is_header_control_valid(buffer, 0, 0, 0, 0)) return 2;
-
-}
-
-
-
-
-int is_finack(void* buffer){
-  return is_header_control_valid(buffer, 1, 0, 0, 1);
-}
-
-
-
-
-int corrupt_packet(void *buffer){
-  return !is_checksum_valid(buffer);
-}
 
 
 
@@ -237,5 +234,17 @@ uint16_t get_my_rwnd (microtcp_socket_t *sock)
 {
   // unread bytes = last byte received - last byte read
   //return MICROTCP_WIN_SIZE - (?? - sock->bytes_received)
+}
+
+
+
+int is_ack_seq(microtcp_sock_t *socket, void *buffer){
+  microtcp_header_t packet = get_hbo_header(buffer);
+
+  // is ACK 
+  if(is_header_control_valid(buffer, 1, 0, 0, 0)) return 1;
+  // it's a packet with data
+  if(is_header_control_valid(buffer, 0, 0, 0, 0)) return 2;
+
 }
 */
