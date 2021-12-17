@@ -52,6 +52,13 @@ typedef enum
   UNKNOWN
 } mircotcp_state_t;
 
+typedef enum
+{
+  SLOW_START,
+  CONGESTION_AVOIDANCE
+} microtcp_congestion_control_state_t;
+
+
 /**
  * This is the microTCP socket structure. It holds all the necessary
  * information of each microTCP socket.
@@ -85,6 +92,8 @@ typedef struct
 
   struct sockaddr address;
   socklen_t address_len; 
+  
+  microtcp_congestion_control_state_t congestion_control_state;
 } microtcp_sock_t;
 
 
