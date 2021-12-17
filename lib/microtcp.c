@@ -52,6 +52,17 @@ microtcp_socket (int domain, int type, int protocol)
   timeout.tv_usec = MICROTCP_ACK_TIMEOUT_US;
 
   s.state = UNKNOWN;
+
+  struct timeval *timeout = malloc (sizeof(struct timeval));
+  timeout->tv_sec = 0;
+  timeout->tv_usec = MICROTCP_ACK_TIMEOUT_US ;
+  if (setsockopt ( receive_socket , SOL_SOCKET ,SO_RCVTIMEO , &timeout ,sizeof ( struct timeval )) < 0)
+  {
+    perror("adding timeout");
+    s.state = INVALID;
+    return s;
+  }
+
   return s;
 }
 
@@ -133,11 +144,14 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
     return socket->sd;
   }
   //received valid SYNACK
-  socket->address = *address;
-  socket->address_len = address_len;
-  socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(uint8_t));
-  socket->state = ESTABLISHED;  
-  socket->ack_number = synack.seq_number + 1;
+  socket->address           = *address;
+  socket->address_len       = address_len;
+  socket->recvbuf           = malloc(MICROTCP_RECVBUF_LEN * sizeof(uint8_t));
+  socket->state             = ESTABLISHED;
+  socket->ack_number        = synack.seq_number + 1;
+  socket->cwnd              = 1;
+  socket->ssthresh          = MICROTCP_INIT_SSTHRESH;
+  socket->congestion_control_state = SLOW_START;  
 
   //make header of last ack
   ack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 0);
@@ -373,13 +387,12 @@ int make_segments(uint32_t seq, uint8_t **segments, const void* buffer, size_t l
   int segments_count;
   size_t  data_len = MICROTCP_MSS - sizeof(header);
 
-  segments = malloc(segments_count*sizeof(uint8_t*));
-  segments_count = length/MICROTCP_MSS + (length%MICROTCP_MSS != 0);
+  segments          = malloc(segments_count*sizeof(uint8_t*));
+  segments_count    = length/MICROTCP_MSS + (length%MICROTCP_MSS != 0);
 
   for (i=0; i<segments_count; i++)
   {
     segments[i] = malloc(sizeof(uint8_t)*MICROTCP_MSS);
-    
     make_header_auto(socket, segments[i], seq+i*data_len);
 
     if (segments_count%2 && i==segments_count-1) //if it is the last segment it may have different payload size
@@ -419,63 +432,95 @@ ssize_t
 microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
                int flags)
 {
-  int     i, sent_segments_count, segments_count, dup;
-  size_t  seq_no, last_ack;
-  ssize_t ret;
-  uint8_t **segments;
-  microtcp_header_t tmp_header;
+  int                 i, sent_segments_count, segments_count, dup;
+  size_t              last_valid_ack, tmp_cwnd;
+  ssize_t             ret;
+  uint8_t           **segments;
+  uint32_t            tmp_data_len;
 
-  segments_count = make_segments(socket, segments, buffer, length);
+
+  segments_count      = make_segments(socket, segments, buffer, length);
   sent_segments_count = 0;
 
   while (sent_segments_count!=segments_count)
   {
+    tmp_cwnd = socket->cwnd;
+
     send(socket, segments, sent_segments_count);
     
-    for (i=0; i<cwnd; i++)
-    {
+    for (i=0; i<tmp_cwnd; i++)
+    {    
+      /* receive a packet */
       ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->address, socket->address_len);
 
-      if (ret==-1)
+      /* received successfully? (timeout? bad checksum?) */
+      if (ret==-1 || corrupt_packet(socket->recvbuf))
       {
+        socket->congestion_control_state = SLOW_START;
         --i;
         continue;
       }
 
-      if (corrupt_packet(socket->recvbuf))
-      {
-        /*TODO: what do we do? */
-      }
-
-      tmp_header = get_hbo_header(socket->recvbuf);
-
-      if (!is_header_control_valid(tmp_header, 1, 0, 0, 0)
+      /* is an ACK? */
+      if (!is_header_control_valid(get_hbo_header(socket->recvbuf), 1, 0, 0, 0)
       {
         --i;
         continue;
       }
       
-      /* if ack is not what was expected */
-      if (header->ack != socket->seq_number)
+      /* if ack_number is not what was expected */
+      if (header->ack_number != socket->seq_number)
       {
         if(dup==3)
         {
+          /* 3rd duplicate ACK : retrasmission */
           dup = 0;
-          cwnd = cwnd/2;
+          socket->ssthresh = socket->cwnd/2;
+          socket->cwnd = socket->ssthresh + 3*MICROTCP_MSS;
           break;
         }
-        if (header->ack == last_ack)
+        if (header->ack == last_valid_ack)
+        {
+          /* a duplicate ACK*/
           dup++;
+        }
         else 
         {
           /*what happens if ack is not what was expected and not a duplicate?*/
+          perror("This is not supposed to happen!");
         }
       }
       else 
       {
-        last_ack = socket->seq_number;
-        socket->seq_number += ((microtcp_header_t*)segments[sent_segments+i])->data_len;
-        sent_segments++;
+        /* sent successfully! */
+        tmp_data_len = ((microtcp_header_t*)segments[sent_segments_count])->data_len;
+        
+        /* update sockets fields */
+        socket->bytes_send += tmp_data_len;
+        socket->packets_send++;
+
+        /* update last valid acknowledgement number */
+        last_valid_ack = socket->seq_number;
+        
+        /* update exepcted sequence number */
+        socket->seq_number += tmp_data_len;
+        
+        sent_segments_count++;
+
+        /* update congestion control window */
+        switch (socket->congestion_control_state)
+        {
+        case SLOW_START:
+          socket->cwnd += MICROTCP_MSS;
+          if(socket->cwnd >= socket->ssthresh)
+            socket->congestion_control_state = CONGESTION_AVOIDANCE;
+          break;
+        
+        case CONGESTION_AVOIDANCE:
+          socket->cwnd += MICROTCP_MSS * (MICROTCP_MSS/socket->cwnd);
+          break;
+        }
+
       }
     }
     /* after break we land here */
