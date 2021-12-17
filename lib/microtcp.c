@@ -457,13 +457,17 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       if (ret==-1 || corrupt_packet(socket->recvbuf))
       {
         socket->congestion_control_state = SLOW_START;
-        --i;
-        continue;
+        socket->ssthresh = socket->cwnd/2;
+        socket->cwnd = MICROTCP_MSS;
+        
+        /*retransmit*/
+        break;
       }
 
       /* is an ACK? */
-      if (!is_header_control_valid(get_hbo_header(socket->recvbuf), 1, 0, 0, 0)
+      if (!is_header_control_valid(get_hbo_header(socket->recvbuf), 1, 0, 0, 0))
       {
+        /* wait for the same ACK again */
         --i;
         continue;
       }
@@ -473,16 +477,20 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       {
         if(dup==3)
         {
-          /* 3rd duplicate ACK : retrasmission */
+          /* 3rd duplicate ACK */
           dup = 0;
           socket->ssthresh = socket->cwnd/2;
           socket->cwnd = socket->ssthresh + 3*MICROTCP_MSS;
+          /* retransmit */
           break;
         }
         if (header->ack == last_valid_ack)
         {
           /* a duplicate ACK*/
           dup++;
+          /* wait for the same ACK again*/
+          --i;
+          continue;
         }
         else 
         {
@@ -491,8 +499,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         }
       }
       else 
-      {
-        /* sent successfully! */
+      { 
         tmp_data_len = ((microtcp_header_t*)segments[sent_segments_count])->data_len;
         
         /* update sockets fields */
@@ -505,13 +512,15 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         /* update exepcted sequence number */
         socket->seq_number += tmp_data_len;
         
+        /* segment sent successfully! */
         sent_segments_count++;
 
-        /* update congestion control window */
+        /* update congestion control state and variables */
         switch (socket->congestion_control_state)
         {
         case SLOW_START:
           socket->cwnd += MICROTCP_MSS;
+
           if(socket->cwnd >= socket->ssthresh)
             socket->congestion_control_state = CONGESTION_AVOIDANCE;
           break;
@@ -520,7 +529,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
           socket->cwnd += MICROTCP_MSS * (MICROTCP_MSS/socket->cwnd);
           break;
         }
-
       }
     }
     /* after break we land here */
