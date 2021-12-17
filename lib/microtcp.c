@@ -114,7 +114,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   // received segment
   if(ret<=0){
-    socket->state = ;
+    socket->state = INVALID;
     return socket->sd;
   }
 
