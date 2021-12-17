@@ -280,7 +280,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
 
     //SEND FINACK, RECEIVE ACK
     /* create FIN ACK segment */
-    finack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 1);
+    finack = make_header(socket->seq_number, socket->ack_number, MICROTCP_RECVBUF_LEN-socket->buf_fill_level, 0, 1, 0, 0, 1);
     //finack.checksum = htonl(crc32(&finack, sizeof(finack)));
     
     /* send FIN ACK to client */
@@ -358,7 +358,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
       socket->ack_number = finack.seq_number + 1;
 
       /* client creates ACK segment to send to server */
-      ack = make_header(socket->seq_number, socket->ack_number, MICROTCP_WIN_SIZE, 0, 1, 0, 0, 0);
+      ack = make_header(socket->seq_number, socket->ack_number, MICROTCP_RECVBUF_LEN-socket->buf_fill_level, 0, 1, 0, 0, 0);
       //ack.checksum =  crc32(&ack, sizeof(ack));
 
       /* send ACK to server */
@@ -471,6 +471,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   uint8_t           **segments;
   uint32_t            tmp_data_len;
   uint64_t            bytes_sent;
+  microtcp_header_t   tmp_header;
 
 
   while (bytes_sent < length)
@@ -478,6 +479,11 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
     tmp_cwnd = socket->cwnd;
 
     byte_limit = min (min (socket->curr_win_size, socket->cwnd), length-bytes_sent);
+    
+    if(byte_limit==0)
+    {
+      
+    }
 
     segments_count = make_segments(socket, segments, buffer+bytes_sent, byte_limit);
     send(socket, segments, segments_count);
@@ -495,16 +501,20 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         break;
       }
 
+      tmp_header = get_hbo_header(socket->recvbuf), 1, 0, 0, 0);
       /* is an ACK? */
-      if (!is_header_control_valid(get_hbo_header(socket->recvbuf), 1, 0, 0, 0))
+      if (!is_header_control_valid(tmp_header))
       {
         /* wait for the same ACK again */
         --i;
         continue;
       }
       
+      /* update current window size to what the receiver sent us */
+      socket->curr_win_size = tmp_header.window;
+
       /* if ack_number is not what was expected */
-      if (header->ack_number != socket->seq_number)
+      if (tmp_header.ack_number != socket->seq_number)
       {
         if(dup==3)
         {
@@ -514,7 +524,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
           /* retransmit */
           break;
         }
-        if (header->ack == last_valid_ack)
+        if (tmp_header.ack_number == last_valid_ack)
         {
           /* a duplicate ACK*/
           dup++;
@@ -540,10 +550,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         
         /* update exepcted sequence number */
         socket->seq_number += tmp_data_len;
-
-        /*     update window size :     */
-        /*  acked bytes mean read bytes */
-        socket->curr_win_size += tmp_data_len;
 
         /* segment sent successfully! */
 
