@@ -167,7 +167,7 @@ int received_all_bytes(microtcp_sock_t *socket, void *buffer, ssize_t received)
 
 
 
-int is_valid_seq(microtcp_sock_t *socket, void *buffer, size_t bytes_received)
+int is_valid_seq(microtcp_sock_t *socket, void *buffer)
 {
   microtcp_header_t packet;
   uint32_t seq, data_len;
@@ -204,7 +204,7 @@ ssize_t send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received)
   }
 
   /* received invalid packet */
-  if (!is_valid_seq(socket, buffer, length) || !received_all_bytes(socket, buffer, bytes_received))
+  if (!is_valid_seq(socket, buffer) || !received_all_bytes(socket, buffer, bytes_received))
 	{
   	send_ack_type(socket, buffer, DUPLICATE, bytes_received);
 		return -1;
@@ -234,15 +234,18 @@ void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t fl
     packet = get_hbo_header(buffer);
     socket->ack_number = packet.seq_number + packet.data_len;  //TODO: check this . Checked, its OK
 
-    /* update window for flow control */
-    socket->curr_win_size = packet.window - bytes_received;
-  } 
+    /* update buffer fill level for flow control */
+    socket->curr_win_size = packet.window;
+    socket->buf_fill_level += bytes_received;
+  }
+  
+  new_window = MICROTCP_RECVBUF_LEN - socket->buf_fill_level;
 
   /* if sending a dupACK, we just resend prev ack_num in socket->ack_number */
-  ack = make_header(socket->seq_number, socket->ack_number, socket->curr_win_size, 0, 1, 0, 0, 0);
+  ack = make_header(socket->seq_number, socket->ack_number, new_window, 0, 1, 0, 0, 0);
 
   sendto(socket->sd, &ack, sizeof(ack), 0, socket->address, socket->address_len);
-  // check stuff
+
 } 
 
 
