@@ -410,17 +410,22 @@ int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer
 void send(microtcp_sock_t *socket, uint8_t **segments, int segments_count)
 {
   int i, ret;
+  uint32_t data_len;
 
   for (i=0; i<segments_count; i++)
   {
     ret = sendto(socket->sd, segments[i], MICROTCP_MSS, 
                     /*TODO: this field!*/, socket->address, socket->address_len);
     //if send fails we wil try again
-    if (ret != ((microtcp_header_t *)segments[i])->data_len)
+    data_len = ((microtcp_header_t *)segments[i])->data_len;
+    if (ret != data_len)
     {
       --i;
       continue;
     }
+    /*    Update current window :     */
+    /* unacked bytes mean unread bytes*/
+    socket->curr_win_size-=data_len;
   }
   return;
 }
@@ -472,7 +477,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   {
     tmp_cwnd = socket->cwnd;
 
-    byte_limit = min (socket->curr_win_size, socket->cwnd, length-bytes_sent);
+    byte_limit = min (min (socket->curr_win_size, socket->cwnd), length-bytes_sent);
 
     segments_count = make_segments(socket, segments, buffer+bytes_sent, byte_limit);
     send(socket, segments, segments_count);
@@ -535,7 +540,11 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         
         /* update exepcted sequence number */
         socket->seq_number += tmp_data_len;
-        
+
+        /*     update window size :     */
+        /*  acked bytes mean read bytes */
+        socket->curr_win_size += tmp_data_len;
+
         /* segment sent successfully! */
 
         /* update congestion control state and variables */

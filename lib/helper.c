@@ -52,7 +52,8 @@ void make_header_auto (microtcp_sock_t *socket, uint8_t *header, uint32_t seq_no
 	microtcp_header_t tmp_header;
 
 	tmp_header = make_header(seq_no, socket->ack_number, 
-													 socket->curr_win_size, data_len, 0, 0, 0, 0);
+													 MICROTCP_RECVBUF_LEN - socket->buf_fill_level, 
+                           data_len, 0, 0, 0, 0);
 
 	memcpy(header, &tmp_header, sizeof(microtcp_header_t));
 }
@@ -265,6 +266,83 @@ void recv_update_socket_fields(microtcp_sock_t *socket, const void* buffer,
   //window updated in send_ack_type (flag = REGULAR)
 }
 
+
+
+
+int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer, size_t length)
+{
+  int i=0;
+  int segments_count;
+  size_t  data_len = MICROTCP_MSS - sizeof(microtcp_header_t);
+
+  segments_count    = length/MICROTCP_MSS + (length%MICROTCP_MSS != 0);
+  segments          = malloc(segments_count*sizeof(uint8_t*));
+
+  for (i=0; i<segments_count; i++)
+  {
+    segments[i] = malloc(sizeof(uint8_t)*MICROTCP_MSS);
+    make_header_auto(socket, segments[i], socket->seq_number+i*data_len);
+
+    if ( !length%MICROTCP_MSS && i==segments_count-1) //if it is the last segment it may have different payload size
+      memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], length%segments_count);
+    else 
+      memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], data_len);
+  }
+  segments_count;
+}
+
+
+
+
+
+void send(microtcp_sock_t *socket, uint8_t **segments, int segments_count)
+{
+  int i, ret;
+
+  for (i=0; i<segments_count; i++)
+  {
+    ret = sendto(socket->sd, segments[i], MICROTCP_MSS, 
+                    /*TODO: this field!*/, socket->address, socket->address_len);
+    //if send fails we wil try again
+    if (ret != ((microtcp_header_t *)segments[i])->data_len)
+    {
+      --i;
+      continue;
+    }
+  }
+  return;
+}
+
+
+void enter_slow_start (microtcp_sock_t *socket)
+{
+  socket->congestion_control_state = SLOW_START;
+  socket->ssthresh = socket->cwnd/2;
+  socket->cwnd = MICROTCP_MSS;
+}
+
+void fast_retransmit (microtcp_sock_t *socket)
+{
+  socket->ssthresh = socket->cwnd/2;
+  socket->cwnd = socket->ssthresh + 3*MICROTCP_MSS;
+}
+
+void update_cwnd (microtcp_sock_t *socket)
+{
+  switch (socket->congestion_control_state)
+  {
+  case SLOW_START:
+    socket->cwnd += MICROTCP_MSS;
+
+    if(socket->cwnd >= socket->ssthresh)
+      socket->congestion_control_state = CONGESTION_AVOIDANCE;
+    break;
+        
+  case CONGESTION_AVOIDANCE:
+    socket->cwnd += MICROTCP_MSS * (MICROTCP_MSS/socket->cwnd);
+    break;
+  }
+}
 
 
 /* Stuff i dont know if we need or to be added  

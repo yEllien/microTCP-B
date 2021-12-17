@@ -129,6 +129,16 @@ void recv_update_socket_fields(microtcp_sock_t *socket, const void* buffer, cons
 
 
 
+int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer, size_t length);
+
+void send(microtcp_sock_t *socket, uint8_t **segments, int segments_count);
+
+void enter_slow_start (microtcp_sock_t *socket);
+
+void fast_retransmit (microtcp_sock_t *socket);
+
+void update_cwnd (microtcp_sock_t *socket);
+
 
 
 
