@@ -167,7 +167,7 @@ int received_all_bytes(microtcp_sock_t *socket, void *buffer, ssize_t received)
 
 
 
-int is_valid_seq(microtcp_sock_t *socket, void *buffer, size_t bytes_received)
+int is_valid_seq(microtcp_sock_t *socket, void *buffer)
 {
   microtcp_header_t packet;
   uint32_t seq, data_len;
@@ -186,7 +186,7 @@ int is_valid_seq(microtcp_sock_t *socket, void *buffer, size_t bytes_received)
 
 
 
-void send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received)
+ssize_t send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received)
 {
 
 	/* if packet is corrupted send duplicate ack */
@@ -203,28 +203,27 @@ void send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received)
     return -1;
   }
 
-  /* received packet with data */
-  if (!is_valid_seq(socket, buffer, length) || !received_all_bytes(socket, buffer, bytes_received))
+  /* received invalid packet */
+  if (!is_valid_seq(socket, buffer) || !received_all_bytes(socket, buffer, bytes_received))
 	{
-  	send_ack_type(socket, buffer, DUPLICATE);
+  	send_ack_type(socket, buffer, DUPLICATE, bytes_received);
 		return -1;
   } 
 
-  send_ack_type(socket, buffer, REGULAR);
+  send_ack_type(socket, buffer, REGULAR, bytes_received);
 	//TODO: ?? send data to application layer
   recv_update_socket_fields(socket, buffer, bytes_received);
-	
-	//TODO: flow control
+
 	return bytes_received;
 }
 
 
 
 
-void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t flag)
+void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t flag, ssize_t bytes_received)
 {
   microtcp_header_t packet, ack;
-  uint32_t;
+  uint16_t new_window;
 
   if (flag == REGULAR)
 	{
@@ -234,12 +233,19 @@ void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t fl
 
     packet = get_hbo_header(buffer);
     socket->ack_number = packet.seq_number + packet.data_len;  //TODO: check this . Checked, its OK
-  } 
 
-  /* if sending a dupACK, we just resend prev ack num in socket->ack_number */
-  ack = make_header(socket->seq_number, socket->ack_number, socket->curr_win_size, 0, 1, 0, 0, 0);
+    /* update buffer fill level for flow control */
+    socket->curr_win_size = packet.window;
+    socket->buf_fill_level += bytes_received;
+  }
+  
+  new_window = MICROTCP_RECVBUF_LEN - socket->buf_fill_level;
+
+  /* if sending a dupACK, we just resend prev ack_num in socket->ack_number */
+  ack = make_header(socket->seq_number, socket->ack_number, new_window, 0, 1, 0, 0, 0);
+
   sendto(socket->sd, &ack, sizeof(ack), 0, socket->address, socket->address_len);
-  // check stuff
+
 } 
 
 
@@ -252,10 +258,11 @@ void recv_update_socket_fields(microtcp_sock_t *socket, const void* buffer,
 {
   microtcp_header_t packet = get_hbo_header(buffer);
   uint32_t payload = packet.data_len;
+
   socket->packets_received++;
   socket->bytes_received += payload;
   socket->buf_fill_level += bytes_received;
-  //update window
+  //window updated in send_ack_type (flag = REGULAR)
 }
 
 
