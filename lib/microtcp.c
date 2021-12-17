@@ -381,21 +381,21 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
 
 
 
-int make_segments(uint32_t seq, uint8_t **segments, const void* buffer, size_t length)
+int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer, size_t length)
 {
   int i=0;
   int segments_count;
-  size_t  data_len = MICROTCP_MSS - sizeof(header);
+  size_t  data_len = MICROTCP_MSS - sizeof(microtcp_header_t);
 
-  segments          = malloc(segments_count*sizeof(uint8_t*));
   segments_count    = length/MICROTCP_MSS + (length%MICROTCP_MSS != 0);
+  segments          = malloc(segments_count*sizeof(uint8_t*));
 
   for (i=0; i<segments_count; i++)
   {
     segments[i] = malloc(sizeof(uint8_t)*MICROTCP_MSS);
-    make_header_auto(socket, segments[i], seq+i*data_len);
+    make_header_auto(socket, segments[i], socket->seq_number+i*data_len);
 
-    if (segments_count%2 && i==segments_count-1) //if it is the last segment it may have different payload size
+    if ( !length%MICROTCP_MSS && i==segments_count-1) //if it is the last segment it may have different payload size
       memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], length%segments_count);
     else 
       memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], data_len);
@@ -407,48 +407,77 @@ int make_segments(uint32_t seq, uint8_t **segments, const void* buffer, size_t l
 
 
 
-void send(microtcp_sock_t *socket, uint8_t **segments, int start)
+void send(microtcp_sock_t *socket, uint8_t **segments, int segments_count)
 {
   int i, ret;
 
-  for (i=0; i<cwnd; i++)
+  for (i=0; i<segments_count; i++)
   {
-    ret = sendto(socket->sd, segments[start+i], MICROTCP_MSS, 
+    ret = sendto(socket->sd, segments[i], MICROTCP_MSS, 
                     /*TODO: this field!*/, socket->address, socket->address_len);
     //if send fails we wil try again
-    if (ret != MICROTCP_MSS)
+    if (ret != ((microtcp_header_t *)segments[i])->data_len)
     {
       --i;
       continue;
     }
   }
+  return;
 }
 
 
+void enter_slow_start (microtcp_sock_t *socket)
+{
+  socket->congestion_control_state = SLOW_START;
+  socket->ssthresh = socket->cwnd/2;
+  socket->cwnd = MICROTCP_MSS;
+}
 
+void fast_retransmit (microtcp_sock_t *socket)
+{
+  socket->ssthresh = socket->cwnd/2;
+  socket->cwnd = socket->ssthresh + 3*MICROTCP_MSS;
+}
 
+void update_cwnd (microtcp_sock_t *socket)
+{
+  switch (socket->congestion_control_state)
+  {
+  case SLOW_START:
+    socket->cwnd += MICROTCP_MSS;
+
+    if(socket->cwnd >= socket->ssthresh)
+      socket->congestion_control_state = CONGESTION_AVOIDANCE;
+    break;
+        
+  case CONGESTION_AVOIDANCE:
+    socket->cwnd += MICROTCP_MSS * (MICROTCP_MSS/socket->cwnd);
+    break;
+  }
+}
 
 ssize_t
 microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
                int flags)
 {
-  int                 i, sent_segments_count, segments_count, dup;
-  size_t              last_valid_ack, tmp_cwnd;
+  int                 i, segments_count, dup;
+  size_t              last_valid_ack, tmp_cwnd, byte_limit;
   ssize_t             ret;
   uint8_t           **segments;
   uint32_t            tmp_data_len;
+  uint64_t            bytes_sent;
 
 
-  segments_count      = make_segments(socket, segments, buffer, length);
-  sent_segments_count = 0;
-
-  while (sent_segments_count!=segments_count)
+  while (bytes_sent < length)
   {
     tmp_cwnd = socket->cwnd;
 
-    send(socket, segments, sent_segments_count);
+    byte_limit = min (socket->curr_win_size, socket->cwnd, length-bytes_sent);
+
+    segments_count = make_segments(socket, segments, buffer+bytes_sent, byte_limit);
+    send(socket, segments, segments_count);
     
-    for (i=0; i<tmp_cwnd; i++)
+    for (i=0; i<segments_count; i++)
     {    
       /* receive a packet */
       ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->address, socket->address_len);
@@ -456,10 +485,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       /* received successfully? (timeout? bad checksum?) */
       if (ret==-1 || corrupt_packet(socket->recvbuf))
       {
-        socket->congestion_control_state = SLOW_START;
-        socket->ssthresh = socket->cwnd/2;
-        socket->cwnd = MICROTCP_MSS;
-        
+        enter_slow_start(socket);
         /*retransmit*/
         break;
       }
@@ -479,8 +505,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         {
           /* 3rd duplicate ACK */
           dup = 0;
-          socket->ssthresh = socket->cwnd/2;
-          socket->cwnd = socket->ssthresh + 3*MICROTCP_MSS;
+          fast_retransmit(socket);
           /* retransmit */
           break;
         }
@@ -500,11 +525,10 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       }
       else 
       { 
-        tmp_data_len = ((microtcp_header_t*)segments[sent_segments_count])->data_len;
+        tmp_data_len = ((microtcp_header_t*)segments[i])->data_len;
         
         /* update sockets fields */
-        socket->bytes_send += tmp_data_len;
-        socket->packets_send++;
+        bytes_sent += tmp_data_len;
 
         /* update last valid acknowledgement number */
         last_valid_ack = socket->seq_number;
@@ -513,22 +537,9 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         socket->seq_number += tmp_data_len;
         
         /* segment sent successfully! */
-        sent_segments_count++;
 
         /* update congestion control state and variables */
-        switch (socket->congestion_control_state)
-        {
-        case SLOW_START:
-          socket->cwnd += MICROTCP_MSS;
-
-          if(socket->cwnd >= socket->ssthresh)
-            socket->congestion_control_state = CONGESTION_AVOIDANCE;
-          break;
-        
-        case CONGESTION_AVOIDANCE:
-          socket->cwnd += MICROTCP_MSS * (MICROTCP_MSS/socket->cwnd);
-          break;
-        }
+        update_cwnd(socket);
       }
     }
     /* after break we land here */
