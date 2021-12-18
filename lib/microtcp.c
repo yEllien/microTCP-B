@@ -47,16 +47,16 @@ microtcp_socket (int domain, int type, int protocol)
   s.bytes_received = 0;
   s.bytes_lost = 0;
   
-  struct timeval timeout;
-  timeout.tv_sec = 0;
-  timeout.tv_usec = MICROTCP_ACK_TIMEOUT_US;
+  struct timeval *timeout;
+  timeout->tv_sec = 0;
+  timeout->tv_usec = MICROTCP_ACK_TIMEOUT_US;
 
   s.state = UNKNOWN;
 
-  struct timeval *timeout = malloc (sizeof(struct timeval));
+  timeout = malloc (sizeof(struct timeval));
   timeout->tv_sec = 0;
   timeout->tv_usec = MICROTCP_ACK_TIMEOUT_US ;
-  if (setsockopt ( receive_socket , SOL_SOCKET ,SO_RCVTIMEO , &timeout ,sizeof ( struct timeval )) < 0)
+  if (setsockopt ( s.sd, SOL_SOCKET ,SO_RCVTIMEO , &timeout ,sizeof ( struct timeval )) < 0)
   {
     perror("adding timeout");
     s.state = INVALID;
@@ -137,7 +137,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
 
   // check that SYN and ACK bits are set to 1
   // check if ACK_received = SYN_sent + 1
-  if( !is_header_control_valid(&synack, 1, 0, 1, 0)
+  if( !is_header_control_valid(synack, 1, 0, 1, 0)
    || synack.ack_number != socket->seq_number)
   {
     socket->state = INVALID;
@@ -204,7 +204,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
     ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
     if (ret > 0)
       syn = get_hbo_header(socket->recvbuf);
-  } while (!is_header_control_valid(&syn, 0, 0, 1, 0));
+  } while (!is_header_control_valid(syn, 0, 0, 1, 0));
   
   //received SYN segment
 
@@ -263,14 +263,14 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   }
 
   //check ACK bit
-  if(!is_header_control_valid(&ack, 1, 0, 0, 0))
+  if(!is_header_control_valid(ack, 1, 0, 0, 0))
   {
     socket->state = INVALID;
     perror("failed to accept connection\n");
     return socket->sd;
   }
 
-  if (connect(socket->sd, socket->address, socket->address_len) == -1)
+  if (connect(socket->sd, &socket->address, socket->address_len) == -1)
   {
     socket->state = INVALID;
     perror("connect");
@@ -334,7 +334,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
 
     /* check that seq number and ack number are valid */
     if(ack.seq_number != socket->ack_number || ack.ack_number != socket->seq_number
-    || !is_header_control_valid(&ack, 1, 0, 0, 0))
+    || !is_header_control_valid(ack, 1, 0, 0, 0))
     {
       perror("error");
       socket->state = INVALID;
@@ -366,7 +366,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
 
       /* check that FIN and ACK bits are set to 1 */
       if(finack.ack_number != socket->seq_number ||
-      !is_header_control_valid(&finack, 1,0,0,1)){
+      !is_header_control_valid(finack, 1,0,0,1)){
         perror("error");
         socket->state = INVALID;
         return socket->sd;
@@ -441,10 +441,10 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         break;
       }
       
-      tmp_header = get_hbo_header(socket->recvbuf));
+      tmp_header = get_hbo_header(socket->recvbuf);
 
       /* is it a FINACK? */
-      if (is_header_control_valid(&tmp_header, 1, 0, 0, 1))
+      if (is_header_control_valid(tmp_header, 1, 0, 0, 1))
       { 
         microtcp_shutdown(socket,  SHUT_RDWR);
         return;
@@ -529,7 +529,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   //copy the data to the buffer
   for (i=0; i<header.data_len; i++)
   {
-    buffer[i] = socket->recvbuf[sizeof(header)+i];
+    ((uint8_t *)buffer)[i] = socket->recvbuf[sizeof(header)+i];
   }
 
   //sends appropriate ACK
