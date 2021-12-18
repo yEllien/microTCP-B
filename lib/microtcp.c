@@ -301,7 +301,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     //finack.checksum = htonl(crc32(&finack, sizeof(finack)));
     
     /* send FIN ACK to client */
-    ret = sendto(socket->sd, &finack, sizeof(finack), 0, &socket->address, socket->address_len);
+    ret = send(socket->sd, &finack, sizeof(finack), 0);
     /* server creates FIN ACK segment */
 
     /* if sendto returned error value or not all header bytes were sent return invalid socket */
@@ -379,7 +379,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
       //ack.checksum =  crc32(&ack, sizeof(ack));
 
       /* send ACK to server */
-      ret = sendto(socket->sd, &ack, sizeof(ack), 0, &socket->address, socket->address_len);
+      ret = send(socket->sd, &ack, sizeof(ack), 0);
       
       /* if sendto returned error value or not all header bytes were sent return invalid socket */
       if(ret < 0){

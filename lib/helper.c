@@ -121,7 +121,7 @@ ssize_t get_ack (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length, micr
 {
   if(get_valid_segment(socket, recvbuf, length))
   {
-    *header = get_hbo_header(recvbuf));
+    *header = get_hbo_header(recvbuf);
 
     if (is_header_control_valid(*header, 1, 0, 0, 0))
     {
@@ -148,8 +148,7 @@ ssize_t flow_control_probe (microtcp_sock_t *socket)
 
   sleep(rand()%MICROTCP_ACK_TIMEOUT_US);
   
-  ret = sendto(socket->sd, &header, 0,
-              /*TODO: this field!*/, socket->address, socket->address_len);
+  ret = send(socket->sd, &header, 0, 0);
 
   if (get_valid_segment(socket, socket->recvbuf, sizeof(microtcp_header_t)))
   {
@@ -275,7 +274,7 @@ void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t fl
   /* if sending a dupACK, we just resend prev ack_num in socket->ack_number */
   ack = make_header(socket->seq_number, socket->ack_number, new_window, 0, 1, 0, 0, 0);
 
-  sendto(socket->sd, &ack, sizeof(ack), 0, socket->address, socket->address_len);
+  send(socket->sd, &ack, sizeof(ack), 0);
 
 } 
 
@@ -370,8 +369,7 @@ void send_segments(microtcp_sock_t *socket, uint8_t **segments, int segments_cou
 
   for (i=0; i<segments_count; i++)
   {
-    ret = sendto(socket->sd, segments[i], MICROTCP_MSS, 
-                    /*TODO: this field!*/, socket->address, socket->address_len);
+    ret = send(socket->sd, segments[i], MICROTCP_MSS, 0);
     //if send fails we wil try again
     data_len = ((microtcp_header_t *)segments[i])->data_len;
     if (ret != data_len)
