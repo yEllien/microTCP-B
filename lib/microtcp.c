@@ -143,9 +143,18 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
     socket->state = INVALID;
     return socket->sd;
   }
+
   //received valid SYNACK
+  if (connect(socket->sd, address, address_len) == -1)
+  {
+    socket->state = INVALID;
+    perror("connect");
+    return socket->sd;
+  }
+
   socket->address           = *address;
   socket->address_len       = address_len;
+
   socket->recvbuf           = malloc(MICROTCP_RECVBUF_LEN * sizeof(uint8_t));
   socket->state             = ESTABLISHED;
   socket->ack_number        = synack.seq_number + 1;

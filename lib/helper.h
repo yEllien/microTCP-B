@@ -40,19 +40,19 @@ microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
 
 
 
-void make_header_auto (microtcp_sock_t *socket, uint8_t *header);
+void make_header_auto (microtcp_sock_t *socket, uint8_t *header, uint32_t data_len, uint32_t seq_no);
 
 
 /* Returns the header in the argument in host byte order */
 
-microtcp_header_t get_hbo_header (microtcp_header_t *nbo_header);
+microtcp_header_t get_hbo_header (uint8_t *nbo_header);
 
 
 
 
 /* Returns 1 if header control is valid according to the given values, 0 otherwise */
 
-int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, uint8_t RST, uint8_t SYN, uint8_t FIN);
+int is_header_control_valid (microtcp_header_t hbo_header, uint8_t ACK, uint8_t RST, uint8_t SYN, uint8_t FIN);
 
 
 
@@ -131,7 +131,7 @@ void recv_update_socket_fields(microtcp_sock_t *socket, const void* buffer, cons
 
 int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer, size_t length);
 
-void send(microtcp_sock_t *socket, uint8_t **segments, int segments_count);
+void send_segments(microtcp_sock_t *socket, uint8_t **segments, int segments_count);
 
 void enter_slow_start (microtcp_sock_t *socket);
 

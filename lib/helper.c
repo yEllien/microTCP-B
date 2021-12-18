@@ -4,7 +4,7 @@
 
 
 
-static uint16_t set_bit (uint16_t data, uint16_t pos)
+uint16_t set_bit (uint16_t data, uint16_t pos)
 {
   return (data|(1 << pos));
 }
@@ -12,7 +12,7 @@ static uint16_t set_bit (uint16_t data, uint16_t pos)
 
 
 
-static uint16_t get_bit (uint16_t data, uint16_t pos)
+uint16_t get_bit (uint16_t data, uint16_t pos)
 {
   return ((data >> pos) & 1);
 }
@@ -20,7 +20,7 @@ static uint16_t get_bit (uint16_t data, uint16_t pos)
 
 
 
-static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number, 
+microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number, 
                                       uint16_t window, uint32_t data_len,
                                       uint8_t ACK, uint8_t RST, uint8_t SYN, uint8_t FIN)
 {
@@ -47,13 +47,12 @@ static microtcp_header_t make_header (uint32_t seq_number,uint32_t ack_number,
 
 
 
-void make_header_auto (microtcp_sock_t *socket, uint8_t *header, uint32_t seq_no)
+void make_header_auto (microtcp_sock_t *socket, uint8_t *header, uint32_t data_len, uint32_t seq_no)
 {
 	microtcp_header_t tmp_header;
 
 	tmp_header = make_header(seq_no, socket->ack_number, 
-													 MICROTCP_RECVBUF_LEN - socket->buf_fill_level, 
-                           data_len, 0, 0, 0, 0);
+													 MICROTCP_RECVBUF_LEN - socket->buf_fill_level, data_len, 0, 0, 0, 0);
 
 	memcpy(header, &tmp_header, sizeof(microtcp_header_t));
 }
@@ -61,7 +60,7 @@ void make_header_auto (microtcp_sock_t *socket, uint8_t *header, uint32_t seq_no
 
 
 
-static microtcp_header_t get_hbo_header (uint8_t *nbo_packet)
+microtcp_header_t get_hbo_header (uint8_t *nbo_packet)
 {
   microtcp_header_t hbo_header, *nbo_header = (microtcp_header_t *) nbo_packet; 
   
@@ -81,16 +80,16 @@ static microtcp_header_t get_hbo_header (uint8_t *nbo_packet)
 
 
 
-int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, 
+int is_header_control_valid (microtcp_header_t hbo_header, uint8_t ACK, 
 																	  uint8_t RST, uint8_t SYN, uint8_t FIN)
 {
-  if(ACK && get_bit(hbo_header->control, ACK_F) == 0)
+  if(ACK && get_bit(hbo_header.control, ACK_F) == 0)
     return 0;
-  if(RST && get_bit(hbo_header->control, RST_F) == 0)
+  if(RST && get_bit(hbo_header.control, RST_F) == 0)
     return 0;
-  if(SYN && get_bit(hbo_header->control, SYN_F) == 0)
+  if(SYN && get_bit(hbo_header.control, SYN_F) == 0)
     return 0;
-  if(FIN && get_bit(hbo_header->control, FIN_F) == 0)
+  if(FIN && get_bit(hbo_header.control, FIN_F) == 0)
     return 0;
 
   return 1;
@@ -109,7 +108,7 @@ int is_finack(void* buffer)
 int get_valid_segment (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length)
 {
   ssize_t ret;
-  ret = recvfrom(socket->sd, recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->address, socket->address_len);
+  ret = recvfrom(socket->sd, recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &socket->address, socket->address_len);
     
   if ( (length? (ret != length) : (ret == -1)) || corrupt_packet(recvbuf))
   {
@@ -124,11 +123,11 @@ ssize_t get_ack (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length, micr
   {
     *header = get_hbo_header(recvbuf));
 
-    if (is_header_control_valid(header, 1, 0, 0, 0))
+    if (is_header_control_valid(*header, 1, 0, 0, 0))
     {
       return 1;
     }
-    else if (is_header_control_valid(header, 1, 0, 0, 1))
+    else if (is_header_control_valid(*header, 1, 0, 0, 1))
     {
       return -1;
     }
@@ -156,11 +155,11 @@ ssize_t flow_control_probe (microtcp_sock_t *socket)
   {
     header = get_hbo_header(socket->recvbuf);
 
-    if (is_header_control_valid(&header, 1, 0, 0, 1))
+    if (is_header_control_valid(header, 1, 0, 0, 1))
     {
       return -1;
     }
-    else if (is_header_control_valid(&header, 1, 0, 0, 0))
+    else if (is_header_control_valid(header, 1, 0, 0, 0))
     {
       socket->curr_win_size = tmp_header.window;
       return 1;
@@ -239,7 +238,7 @@ int is_valid_seq(microtcp_sock_t *socket, void *buffer)
   uint32_t seq, data_len;
 
   /* check that it's not an ACK */
-  if(!is_header_control_valid((microtcp_header_t *)buffer, 0, 0, 0, 0)) return 0;
+  if(!is_header_control_valid((microtcp_header_t)buffer, 0, 0, 0, 0)) return 0;
 
   /* find sequence number field */
   packet = get_hbo_header(buffer);
@@ -339,20 +338,23 @@ int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer
 {
   int i=0;
   int segments_count;
-  size_t  data_len = MICROTCP_MSS - sizeof(microtcp_header_t);
+  size_t  std_data_len = MICROTCP_MSS - sizeof(microtcp_header_t);
+  size_t  data_len;
 
   segments_count    = length/MICROTCP_MSS + (length%MICROTCP_MSS != 0);
   segments          = malloc(segments_count*sizeof(uint8_t*));
 
   for (i=0; i<segments_count; i++)
   {
-    segments[i] = malloc(sizeof(uint8_t)*MICROTCP_MSS);
-    make_header_auto(socket, segments[i], socket->seq_number+i*data_len);
-
     if ( !length%MICROTCP_MSS && i==segments_count-1) //if it is the last segment it may have different payload size
-      memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], length%segments_count);
-    else 
-      memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], data_len);
+      data_len = length%segments_count;
+    else
+      data_len = std_data_len;
+
+    segments[i] = malloc(sizeof(uint8_t)*MICROTCP_MSS);
+    make_header_auto(socket, segments[i], data_len, socket->seq_number+i*std_data_len);
+
+    memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], data_len);
   }
   segments_count;
 }
