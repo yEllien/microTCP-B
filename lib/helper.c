@@ -1,6 +1,6 @@
 #include "helper.h"
 #include <string.h>
-
+#include <stdlib.h>
 
 
 
@@ -60,7 +60,7 @@ void make_header_auto (microtcp_sock_t *socket, uint8_t *header, uint32_t data_l
 
 
 
-microtcp_header_t get_hbo_header (uint8_t *nbo_packet)
+microtcp_header_t get_hbo_header (const uint8_t *nbo_packet)
 {
   microtcp_header_t hbo_header, *nbo_header = (microtcp_header_t *) nbo_packet; 
   
@@ -110,7 +110,7 @@ int get_valid_segment (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length
   ssize_t ret;
   ret = recv(socket->sd, recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL);
     
-  if ( (length? (ret != length) : (ret == -1)) || corrupt_packet(recvbuf))
+  if ( (length? (ret != length) : (ret == -1)) || corrupt_packet(recvbuf, ret))
   {
     return 0;
   }
@@ -160,7 +160,7 @@ ssize_t flow_control_probe (microtcp_sock_t *socket)
     }
     else if (is_header_control_valid(header, 1, 0, 0, 0))
     {
-      socket->curr_win_size = tmp_header.window;
+      socket->curr_win_size = header.window;
       return 1;
     }
   }
@@ -170,7 +170,7 @@ ssize_t flow_control_probe (microtcp_sock_t *socket)
 
 
 
-static int is_equal_addresses (const struct sockaddr a, const struct sockaddr b)
+int is_equal_addresses (const struct sockaddr a, const struct sockaddr b)
 {
   if (a.sa_family != b.sa_family)
     return 0;
@@ -182,16 +182,16 @@ static int is_equal_addresses (const struct sockaddr a, const struct sockaddr b)
 
 
 
-static int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len)
+int is_checksum_valid(const uint8_t *recv_buf, const ssize_t msg_len)
 {
 
   microtcp_header_t *tmp_header;
   uint32_t received_checksum, calculated_checksum;
   int i = 0, size = 0;
 
-  tmp_header = malloc(msg_len);
+  tmp_header = malloc(sizeof(microtcp_header_t));
   
-  memcpy(tmp_header, recv_buf, size);
+  memcpy(tmp_header, recv_buf, sizeof(microtcp_header_t));
 
   /* check sum in received header */
   received_checksum = ntohl(tmp_header->checksum);
@@ -205,9 +205,9 @@ static int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len)
 
 
 
-int corrupt_packet(void *buffer)
+int corrupt_packet(void *buffer, ssize_t length)
 {
-  return !is_checksum_valid(buffer);
+  return !is_checksum_valid(buffer, length);
 }
 
 
@@ -237,7 +237,7 @@ int is_valid_seq(microtcp_sock_t *socket, void *buffer)
   uint32_t seq, data_len;
 
   /* check that it's not an ACK */
-  if(!is_header_control_valid((microtcp_header_t)buffer, 0, 0, 0, 0)) return 0;
+  if(!is_header_control_valid(*((microtcp_header_t *)buffer), 0, 0, 0, 0)) return 0;
 
   /* find sequence number field */
   packet = get_hbo_header(buffer);
@@ -285,9 +285,9 @@ ssize_t send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received)
 {
 
 	/* if packet is corrupted send duplicate ack */
-	if (corrupt_packet(buffer))
+	if (corrupt_packet(buffer, bytes_received))
 	{
-		send_ack_type(socket, buffer, DUPLICATE);
+		send_ack_type(socket, buffer, DUPLICATE, bytes_received);
 		return -1;
 	}
 
@@ -333,7 +333,7 @@ void recv_update_socket_fields(microtcp_sock_t *socket, const void* buffer,
 
 
 
-int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer, size_t length)
+int make_segments(microtcp_sock_t *socket, uint8_t **segments, const void* buffer, size_t length)
 {
   int i=0;
   int segments_count;
@@ -351,9 +351,9 @@ int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer
       data_len = std_data_len;
 
     segments[i] = malloc(sizeof(uint8_t)*MICROTCP_MSS);
-    make_header_auto(socket, segments[i], data_len, socket->seq_number+i*std_data_len);
+    make_header_auto(socket, segments[i], data_len, (socket->seq_number)+(i*std_data_len));
 
-    memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], data_len);
+    memcpy(segments[i]+sizeof(microtcp_header_t), buffer+i*data_len, data_len);
   }
   segments_count;
 }

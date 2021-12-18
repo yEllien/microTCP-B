@@ -45,7 +45,7 @@ void make_header_auto (microtcp_sock_t *socket, uint8_t *header, uint32_t data_l
 
 /* Returns the header in the argument in host byte order */
 
-microtcp_header_t get_hbo_header (uint8_t *nbo_header);
+microtcp_header_t get_hbo_header (const uint8_t *nbo_header);
 
 
 
@@ -73,14 +73,14 @@ int is_equal_addresses (const struct sockaddr a, const struct sockaddr b);
 
 /* Returns 1 if checksum is valid, 0 otherwise */
 
-int is_checksum_valid(const uint8_t *recv_buf, const size_t msg_len);
+int is_checksum_valid(const uint8_t *recv_buf, const ssize_t msg_len);
 
 
 
 
 /* Returns 1 if given packet is corrupt */
 
-int corrupt_packet(void *buffer);
+int corrupt_packet(void *buffer, ssize_t length);
 
 
 
@@ -88,7 +88,7 @@ int corrupt_packet(void *buffer);
 /* checks that packet in buffer has the expected sequence number (is a continuous packet) */
 /*  WE ASUME THAT BUFFER CONTAINS ONE PACKET */
 
-int is_valid_seq(microtcp_sock_t *socket, void *buffer, size_t bytes_received);
+int is_valid_seq(microtcp_sock_t *socket, void *buffer);
 
 
 
@@ -109,14 +109,14 @@ void update_window_size(microtcp_sock_t *socket);
 
 /* Decide and send an appropriate ACK */
 
-void send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received);
+ssize_t send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received);
 
 
 
 
 /* Send given type of ACK */
 
-void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t flag);
+void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t flag, ssize_t bytes_received);
 
 
 
@@ -129,7 +129,7 @@ void recv_update_socket_fields(microtcp_sock_t *socket, const void* buffer, cons
 
 
 
-int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer, size_t length);
+int make_segments(microtcp_sock_t *socket, uint8_t **segments, const void* buffer, size_t length);
 
 void send_segments(microtcp_sock_t *socket, uint8_t **segments, int segments_count);
 

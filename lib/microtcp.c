@@ -256,7 +256,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
 
   ack = get_hbo_header(socket->recvbuf);
 
-  if(!is_checksum_valid(socket->recvbuf, recv)){
+  if(!is_checksum_valid(socket->recvbuf, ret)){
     perror("checksum is invalid");
     socket->state = INVALID;
     return socket->sd;
