@@ -269,6 +269,14 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
     perror("failed to accept connection\n");
     return socket->sd;
   }
+
+  if (connect(socket->sd, socket->address, socket->address_len) == -1)
+  {
+    socket->state = INVALID;
+    perror("connect");
+    return socket->sd;
+  }
+
   socket->state = ESTABLISHED;
   socket->ack_number = ack.seq_number+1;
   
