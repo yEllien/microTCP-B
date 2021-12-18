@@ -390,32 +390,28 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   uint8_t           **segments;
   uint32_t            tmp_data_len;
   uint64_t            bytes_sent;
-  microtcp_header_t   tmp_header;
+  microtcp_header_t   tmp_header, probe_header;
   int wait;
 
+  probe_header = make_header(socket->seq_number, 0, MICROTCP_RECVBUF_LEN-socket->buf_fill_level, 0, 0,0,0,0);
   while (bytes_sent < length)
   {
     tmp_cwnd = socket->cwnd;
 
     byte_limit = min (min (socket->curr_win_size, socket->cwnd), length-bytes_sent);
     
-    tmp_header = make_header(socket->seq_number, 0, MICROTCP_RECVBUF_LEN-socket->buf_fill_level, 0, 0,0,0,0);
+    /*probe till window!=0*/
     while (byte_limit == 0)
     {
-      sleep(rand%MICROTCP_ACK_TIMEOUT_US);
-      ret = sendto(socket->sd, &tmp_header, 0,
-                    /*TODO: this field!*/, socket->address, socket->address_len);
-      if (ret == sizeof(microtcp_header_t))
+      ret = control_flow_probe(socket);
+
+      if(ret == -1)
       {
-        ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALLM socket->address, socket->address_len);
-        if (ret == sizeof(microtcp_header_t) && !corrupt_packet(socket->buf_fill_level))
-        {
-          if (is_header_control_valid(get_hbo_header(socket->recvbuf), 1, 0, 0, 0))
-          {
-            socket->curr_win_size = get_hbo_header(socket->recvbuf).window;
-          }
-        }
+        microtcp_shutdown(socket,  SHUT_RDWR);
+        return;
       }
+      if(ret)
+        byte_limit = min (min (socket->curr_win_size, socket->cwnd), length-bytes_sent);
     }
     
 
@@ -424,20 +420,24 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
     
     for (i=0; i<segments_count; i++)
     {    
-      /* receive a packet */
-      ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->address, socket->address_len);
-
-      /* received successfully? (timeout? bad checksum?) */
-      if (ret==-1 || corrupt_packet(socket->recvbuf))
+      if (!get_valid_segment(socket, socket->recvbuf, sizeof(microtcp_header_t)))
       {
         enter_slow_start(socket);
         /*retransmit*/
         break;
       }
-
+      
       tmp_header = get_hbo_header(socket->recvbuf));
-      /* is an ACK? */
-      if (!is_header_control_valid(tmp_header))
+
+      /* is it a FINACK? */
+      if (is_header_control_valid(&tmp_header, 1, 0, 0, 1))
+      { 
+        microtcp_shutdown(socket,  SHUT_RDWR);
+        return;
+      }
+
+      /* is it not an ACK? */
+      if (!is_header_control_valid(tmp_header, 1, 0, 0, 0))
       {
         /* wait for the same ACK again */
         --i;

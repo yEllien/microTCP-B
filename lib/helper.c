@@ -81,7 +81,7 @@ static microtcp_header_t get_hbo_header (uint8_t *nbo_packet)
 
 
 
-static int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, 
+int is_header_control_valid (microtcp_header_t *hbo_header, uint8_t ACK, 
 																	  uint8_t RST, uint8_t SYN, uint8_t FIN)
 {
   if(ACK && get_bit(hbo_header->control, ACK_F) == 0)
@@ -118,7 +118,7 @@ int get_valid_segment (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length
   return 1;
 }
 
-int get_ack (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length, microtcp_header_t *header)
+ssize_t get_ack (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length, microtcp_header_t *header)
 {
   if(get_valid_segment(socket, recvbuf, length))
   {
@@ -128,9 +128,43 @@ int get_ack (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length, microtcp
     {
       return 1;
     }
+    else if (is_header_control_valid(header, 1, 0, 0, 1))
+    {
+      return -1;
+    }
   }
   return 0;
 }
+
+
+
+ssize_t control_flow_probe (microtcp_sock_t *socket)
+{
+  ssize_t ret;
+  microtcp_header_t header;
+
+  sleep(rand()%MICROTCP_ACK_TIMEOUT_US);
+  ret = sendto(socket->sd, &probe_header, 0,
+              /*TODO: this field!*/, socket->address, socket->address_len);
+
+  if (get_valid_segment(socket, socket->recvbuf, sizeof(microtcp_header_t)))
+  {
+    header = get_hbo_header(socket->recvbuf);
+
+    if (is_header_control_valid(&header, 1, 0, 0, 1))
+    {
+      return -1;
+    }
+    else if (is_header_control_valid(&header, 1, 0, 0, 0))
+    {
+      socket->curr_win_size = tmp_header.window;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+
 
 
 static int is_equal_addresses (const struct sockaddr a, const struct sockaddr b)
