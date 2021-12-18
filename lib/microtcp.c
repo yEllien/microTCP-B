@@ -380,87 +380,6 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
 
 
 
-
-int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer, size_t length)
-{
-  int i=0;
-  int segments_count;
-  size_t  data_len = MICROTCP_MSS - sizeof(microtcp_header_t);
-
-  segments_count    = length/MICROTCP_MSS + (length%MICROTCP_MSS != 0);
-  segments          = malloc(segments_count*sizeof(uint8_t*));
-
-  for (i=0; i<segments_count; i++)
-  {
-    segments[i] = malloc(sizeof(uint8_t)*MICROTCP_MSS);
-    make_header_auto(socket, segments[i], socket->seq_number+i*data_len);
-
-    if ( !length%MICROTCP_MSS && i==segments_count-1) //if it is the last segment it may have different payload size
-      memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], length%segments_count);
-    else 
-      memcpy(segments[i]+sizeof(microtcp_header_t), buffer[i*data_len], data_len);
-  }
-  segments_count;
-}
-
-
-
-
-
-void send(microtcp_sock_t *socket, uint8_t **segments, int segments_count)
-{
-  int i, ret;
-  uint32_t data_len;
-
-  for (i=0; i<segments_count; i++)
-  {
-    ret = sendto(socket->sd, segments[i], MICROTCP_MSS, 
-                    /*TODO: this field!*/, socket->address, socket->address_len);
-    //if send fails we wil try again
-    data_len = ((microtcp_header_t *)segments[i])->data_len;
-    if (ret != data_len)
-    {
-      --i;
-      continue;
-    }
-    /*    Update current window :     */
-    /* unacked bytes mean unread bytes*/
-    socket->curr_win_size-=data_len;
-  }
-  return;
-}
-
-
-void enter_slow_start (microtcp_sock_t *socket)
-{
-  socket->congestion_control_state = SLOW_START;
-  socket->ssthresh = socket->cwnd/2;
-  socket->cwnd = MICROTCP_MSS;
-}
-
-void fast_retransmit (microtcp_sock_t *socket)
-{
-  socket->ssthresh = socket->cwnd/2;
-  socket->cwnd = socket->ssthresh + 3*MICROTCP_MSS;
-}
-
-void update_cwnd (microtcp_sock_t *socket)
-{
-  switch (socket->congestion_control_state)
-  {
-  case SLOW_START:
-    socket->cwnd += MICROTCP_MSS;
-
-    if(socket->cwnd >= socket->ssthresh)
-      socket->congestion_control_state = CONGESTION_AVOIDANCE;
-    break;
-        
-  case CONGESTION_AVOIDANCE:
-    socket->cwnd += MICROTCP_MSS * (MICROTCP_MSS/socket->cwnd);
-    break;
-  }
-}
-
 ssize_t
 microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
                int flags)
@@ -472,7 +391,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   uint32_t            tmp_data_len;
   uint64_t            bytes_sent;
   microtcp_header_t   tmp_header;
-
+  int wait;
 
   while (bytes_sent < length)
   {
@@ -480,13 +399,28 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 
     byte_limit = min (min (socket->curr_win_size, socket->cwnd), length-bytes_sent);
     
-    if(byte_limit==0)
+    tmp_header = make_header(socket->seq_number, 0, MICROTCP_RECVBUF_LEN-socket->buf_fill_level, 0, 0,0,0,0);
+    while (byte_limit == 0)
     {
-      
+      sleep(rand%MICROTCP_ACK_TIMEOUT_US);
+      ret = sendto(socket->sd, &tmp_header, 0,
+                    /*TODO: this field!*/, socket->address, socket->address_len);
+      if (ret == sizeof(microtcp_header_t))
+      {
+        ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALLM socket->address, socket->address_len);
+        if (ret == sizeof(microtcp_header_t) && !corrupt_packet(socket->buf_fill_level))
+        {
+          if (is_header_control_valid(get_hbo_header(socket->recvbuf), 1, 0, 0, 0))
+          {
+            socket->curr_win_size = get_hbo_header(socket->recvbuf).window;
+          }
+        }
+      }
     }
+    
 
     segments_count = make_segments(socket, segments, buffer+bytes_sent, byte_limit);
-    send(socket, segments, segments_count);
+    send_segments(socket, segments, segments_count);
     
     for (i=0; i<segments_count; i++)
     {    
@@ -501,7 +435,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         break;
       }
 
-      tmp_header = get_hbo_header(socket->recvbuf), 1, 0, 0, 0);
+      tmp_header = get_hbo_header(socket->recvbuf));
       /* is an ACK? */
       if (!is_header_control_valid(tmp_header))
       {

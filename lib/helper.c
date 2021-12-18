@@ -106,6 +106,32 @@ int is_finack(void* buffer)
 
 
 
+int get_valid_segment (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length)
+{
+  ssize_t ret;
+  ret = recvfrom(socket->sd, recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, socket->address, socket->address_len);
+    
+  if ( (length? (ret != length) : (ret == -1)) || corrupt_packet(recvbuf))
+  {
+    return 0;
+  }
+  return 1;
+}
+
+int get_ack (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length, microtcp_header_t *header)
+{
+  if(get_valid_segment(socket, recvbuf, length))
+  {
+    *header = get_hbo_header(recvbuf));
+
+    if (is_header_control_valid(header, 1, 0, 0, 0))
+    {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 
 static int is_equal_addresses (const struct sockaddr a, const struct sockaddr b)
 {
@@ -295,20 +321,25 @@ int make_segments(microtcp_sock_t socket, uint8_t **segments, const void* buffer
 
 
 
-void send(microtcp_sock_t *socket, uint8_t **segments, int segments_count)
+void send_segments(microtcp_sock_t *socket, uint8_t **segments, int segments_count)
 {
   int i, ret;
+  uint32_t data_len;
 
   for (i=0; i<segments_count; i++)
   {
     ret = sendto(socket->sd, segments[i], MICROTCP_MSS, 
                     /*TODO: this field!*/, socket->address, socket->address_len);
     //if send fails we wil try again
-    if (ret != ((microtcp_header_t *)segments[i])->data_len)
+    data_len = ((microtcp_header_t *)segments[i])->data_len;
+    if (ret != data_len)
     {
       --i;
       continue;
     }
+    /*    Update current window :     */
+    /* unacked bytes mean unread bytes*/
+    socket->curr_win_size-=data_len;
   }
   return;
 }
