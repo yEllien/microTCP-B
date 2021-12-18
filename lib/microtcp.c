@@ -390,14 +390,12 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   uint8_t           **segments;
   uint32_t            tmp_data_len;
   uint64_t            bytes_sent;
-  microtcp_header_t   tmp_header, probe_header;
+  microtcp_header_t   tmp_header;
   int wait;
 
-  probe_header = make_header(socket->seq_number, 0, MICROTCP_RECVBUF_LEN-socket->buf_fill_level, 0, 0,0,0,0);
   while (bytes_sent < length)
   {
     tmp_cwnd = socket->cwnd;
-
     byte_limit = min (min (socket->curr_win_size, socket->cwnd), length-bytes_sent);
     
     /*probe till window!=0*/
@@ -414,7 +412,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         byte_limit = min (min (socket->curr_win_size, socket->cwnd), length-bytes_sent);
     }
     
-
     segments_count = make_segments(socket, segments, buffer+bytes_sent, byte_limit);
     send_segments(socket, segments, segments_count);
     
@@ -507,9 +504,9 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 
   bytes_received = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN,/*TODO:what's this?*/ flags, socket->address, socket->address_len);
 
-  if(bytes_received<0) return -1;
+  if(bytes_received<0)
+    return -1;
 
-  
   header = get_hbo_header(buffer);
 
   //copy the data to the buffer
@@ -518,5 +515,6 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
     buffer[i] = socket->recvbuf[sizeof(header)+i];
   }
 
+  //sends appropriate ACK
   return send_ack(socket, socket->recvbuf, bytes_received);
 }

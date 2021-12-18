@@ -145,8 +145,11 @@ ssize_t flow_control_probe (microtcp_sock_t *socket)
   ssize_t ret;
   microtcp_header_t header;
 
+  header = make_header(socket->seq_number, 0, MICROTCP_RECVBUF_LEN-socket->buf_fill_level, 0, 0,0,0,0);
+
   sleep(rand()%MICROTCP_ACK_TIMEOUT_US);
-  ret = sendto(socket->sd, &probe_header, 0,
+  
+  ret = sendto(socket->sd, &header, 0,
               /*TODO: this field!*/, socket->address, socket->address_len);
 
   if (get_valid_segment(socket, socket->recvbuf, sizeof(microtcp_header_t)))
@@ -249,6 +252,37 @@ int is_valid_seq(microtcp_sock_t *socket, void *buffer)
 
 
 
+void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t flag, ssize_t bytes_received)
+{
+  microtcp_header_t packet, ack;
+  uint16_t new_window;
+
+  if (flag == REGULAR)
+	{
+    
+		/* not sending a duplicate ack so we have to extract seq_num and 
+		   data_length from header to calculate the new ack num we want to send */
+
+    packet = get_hbo_header(buffer);
+    socket->ack_number = packet.seq_number + packet.data_len;  //TODO: check this . Checked, its OK
+
+    /* update buffer fill level for flow control */
+    socket->curr_win_size = packet.window;
+    socket->buf_fill_level += bytes_received;
+  }
+  
+  new_window = MICROTCP_RECVBUF_LEN - socket->buf_fill_level;
+
+  /* if sending a dupACK, we just resend prev ack_num in socket->ack_number */
+  ack = make_header(socket->seq_number, socket->ack_number, new_window, 0, 1, 0, 0, 0);
+
+  sendto(socket->sd, &ack, sizeof(ack), 0, socket->address, socket->address_len);
+
+} 
+
+
+
+
 ssize_t send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received)
 {
 
@@ -280,36 +314,6 @@ ssize_t send_ack(microtcp_sock_t *socket, void *buffer, ssize_t bytes_received)
 	return bytes_received;
 }
 
-
-
-
-void send_ack_type(microtcp_sock_t *socket, void *buffer, microtcp_ack_type_t flag, ssize_t bytes_received)
-{
-  microtcp_header_t packet, ack;
-  uint16_t new_window;
-
-  if (flag == REGULAR)
-	{
-    
-		/* not sending a duplicate ack so we have to extract seq_num and 
-		   data_length from header to calculate the new ack num we want to send */
-
-    packet = get_hbo_header(buffer);
-    socket->ack_number = packet.seq_number + packet.data_len;  //TODO: check this . Checked, its OK
-
-    /* update buffer fill level for flow control */
-    socket->curr_win_size = packet.window;
-    socket->buf_fill_level += bytes_received;
-  }
-  
-  new_window = MICROTCP_RECVBUF_LEN - socket->buf_fill_level;
-
-  /* if sending a dupACK, we just resend prev ack_num in socket->ack_number */
-  ack = make_header(socket->seq_number, socket->ack_number, new_window, 0, 1, 0, 0, 0);
-
-  sendto(socket->sd, &ack, sizeof(ack), 0, socket->address, socket->address_len);
-
-} 
 
 
 
