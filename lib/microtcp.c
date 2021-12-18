@@ -403,7 +403,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
     /*probe till window!=0*/
     while (byte_limit == 0)
     {
-      ret = control_flow_probe(socket);
+      ret = flow_control_probe(socket);
 
       if(ret == -1)
       {

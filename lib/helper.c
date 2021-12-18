@@ -138,7 +138,9 @@ ssize_t get_ack (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length, micr
 
 
 
-ssize_t control_flow_probe (microtcp_sock_t *socket)
+
+
+ssize_t flow_control_probe (microtcp_sock_t *socket)
 {
   ssize_t ret;
   microtcp_header_t header;
