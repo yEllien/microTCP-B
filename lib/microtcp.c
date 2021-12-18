@@ -312,7 +312,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
     }
 
     /* wait to receive ACK from client */
-    ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &socket->address, &socket->address_len);
+    ret = recv(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL);
     
     /* if recvfrom returned error value or not all header bytes were received return invalid socket */
     if(ret <= 0)
@@ -348,7 +348,7 @@ microtcp_shutdown (microtcp_sock_t *socket, int how)
       socket->state = CLOSING_BY_HOST;
       
       /* wait to receive FIN ACK */
-      ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &socket->address, &socket->address_len);
+      ret = recv(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL);
 
       if(ret<=0)
       {
@@ -519,7 +519,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   microtcp_header_t header;
   int i=0;
 
-  bytes_received = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN,/*TODO:what's this?*/ flags, socket->address, socket->address_len);
+  bytes_received = recv(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN,/*TODO:what's this?*/ flags);
 
   if(bytes_received<0)
     return -1;

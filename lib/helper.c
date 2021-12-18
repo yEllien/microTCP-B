@@ -108,7 +108,7 @@ int is_finack(void* buffer)
 int get_valid_segment (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length)
 {
   ssize_t ret;
-  ret = recvfrom(socket->sd, recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &socket->address, socket->address_len);
+  ret = recvfrom(socket->sd, recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL);
     
   if ( (length? (ret != length) : (ret == -1)) || corrupt_packet(recvbuf))
   {
