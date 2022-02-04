@@ -18,6 +18,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <stdint.h>
+#include <stdlib.h>
+
 #ifndef UTILS_CRC32_H_
 #define UTILS_CRC32_H_
 

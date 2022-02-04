@@ -23,8 +23,50 @@
  * This file is already inserted at the build system.
  */
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <stdint.h> 
+
+#include "../utils/crc32.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <netinet/in.h>
+
+#include "../lib/microtcp.h"
+
+
 int
 main(int argc, char **argv)
 {
+    microtcp_sock_t sock;
+    uint16_t server_port = 4444;
+    const char *serverip = "";
+    struct sockaddr_in sin;
 
+    if ((sock->sd = microtcp_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+        printf ("Failed to open microTCP socket");
+        free (buffer);
+        fclose (fp);
+        return -EXIT_FAILURE;
+    }
+
+    struct sockaddr_in sin;
+    memset (&sin, 0, sizeof(struct sockaddr_in));
+    sin.sin_family = AF_INET;
+
+    /*Port that server listens at */
+    sin.sin_port = htons (server_port);
+
+    /* The server's IP*/
+    sin.sin_addr.s_addr = inet_addr (serverip);
+
+    // microtcp_connect returns the socket so we have to check for error based on the socket's state
+    microtcp_connect(sock, (struct sockaddr *) &sin, sizeof(struct sockaddr_in));
+
+    if(sock->state == INVALID){
+        printf ("failed TCP connect");
+        exit (EXIT_FAILURE);
+    }
 }

@@ -1,5 +1,7 @@
 #include "microtcp.h"
 
+#define min(x,y) x<y?x:y
+
 
 typedef enum
 {

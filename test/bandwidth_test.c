@@ -202,7 +202,7 @@ server_microtcp (uint16_t listen_port, const char *file)
   /* Bind to all available network interfaces */
   sin.sin_addr.s_addr = INADDR_ANY;
 
-  if (microtcp_bind (sock, (struct sockaddr *) &sin, sizeof(struct sockaddr_in)) == -1) {
+  if (microtcp_bind (&sock, (struct sockaddr *) &sin, sizeof(struct sockaddr_in)) == -1) {
     perror ("TCP bind");
     free (buffer);
     fclose (fp);
@@ -211,7 +211,7 @@ server_microtcp (uint16_t listen_port, const char *file)
 
   /* Accept a connection from the client */
   client_addr_len = sizeof(struct sockaddr);
-  microtcp_accept (&sock, &client_addr, &client_addr_len);
+  microtcp_accept (&sock, &client_addr, client_addr_len);
   if (sock.state == INVALID) {
     perror ("TCP accept");
     free (buffer);
@@ -230,7 +230,7 @@ server_microtcp (uint16_t listen_port, const char *file)
    */
 
   clock_gettime (CLOCK_MONOTONIC_RAW, &start_time);
-  while ((received = microtcp_recv (accepted, buffer, CHUNK_SIZE, 0)) > 0) {
+  while ((received = microtcp_recv (&sock, buffer, CHUNK_SIZE, 0)) > 0) {
     written = fwrite (buffer, sizeof(uint8_t), received, fp);
     total_bytes += received;
     if (written * sizeof(uint8_t) != received) {
@@ -249,7 +249,7 @@ server_microtcp (uint16_t listen_port, const char *file)
   print_statistics (total_bytes, start_time, end_time);
 
   //shutdown (accepted, SHUT_RDWR);
-  microtcp_shutdown (sock, SHUT_RDWR);
+  microtcp_shutdown (&sock, SHUT_RDWR);
   //close (accepted);
   //close (sock);
   fclose (fp);
@@ -347,7 +347,7 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
 {
   /*TODO: Write your code here */
   uint8_t *buffer;
-  microtcp_socket_t *sock;       // changed sock type from int to microtcp_socket_t *
+  microtcp_sock_t *sock;       // changed sock type from int to microtcp_socket_t *
   socklen_t client_addr_len;
   FILE *fp;
   size_t read_items = 0;
@@ -371,7 +371,7 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   }
 
   // create a microtcp socket
-  if ((sock->sd = microtcp_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+  if ((sock->sd = microtcp_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP).sd) == -1) {
     perror ("Opening microTCP socket");
     free (buffer);
     fclose (fp);

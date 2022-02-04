@@ -19,13 +19,13 @@
  */
 
 #include "microtcp.h"
-#include "../utils/crc32.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 #include <netinet/in.h>
 #include "helper.h"
+#include "../utils/crc32.h"
 
 
 
@@ -33,6 +33,8 @@
 microtcp_sock_t
 microtcp_socket (int domain, int type, int protocol)
 {
+  printf("opening socket\n");
+
   microtcp_sock_t s;
   if ((s.sd = socket(domain, SOCK_DGRAM, IPPROTO_UDP)) == -1){
     perror("opening socket");
@@ -40,6 +42,7 @@ microtcp_socket (int domain, int type, int protocol)
     return s;
   }
   
+printf("init socket\n");
   s.packets_send = 0;
   s.packets_received = 0;
   s.packets_lost = 0;
@@ -47,13 +50,16 @@ microtcp_socket (int domain, int type, int protocol)
   s.bytes_received = 0;
   s.bytes_lost = 0;
   
+printf("init timeout\n");
+
   struct timeval *timeout;
+  timeout = malloc (sizeof(struct timeval));
+
   timeout->tv_sec = 0;
   timeout->tv_usec = MICROTCP_ACK_TIMEOUT_US;
 
   s.state = UNKNOWN;
 
-  timeout = malloc (sizeof(struct timeval));
   timeout->tv_sec = 0;
   timeout->tv_usec = MICROTCP_ACK_TIMEOUT_US ;
   if (setsockopt ( s.sd, SOL_SOCKET ,SO_RCVTIMEO , &timeout ,sizeof ( struct timeval )) < 0)
@@ -73,6 +79,7 @@ int
 microtcp_bind (microtcp_sock_t *socket, const struct sockaddr *address,
                socklen_t address_len)
 { 
+  printf("binding socket\n");
   int rv;
   if((rv = bind(socket->sd, address, address_len)) == -1){
     perror("TCP bind");
@@ -92,6 +99,7 @@ int
 microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
                   socklen_t address_len)
 {
+  printf("connecting\n");
   microtcp_header_t syn, synack, ack;
   struct sockaddr src_addr;
   socklen_t src_addr_length;
@@ -188,6 +196,7 @@ int
 microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
                  socklen_t address_len)
 {
+  printf("accepting\n");
   socket->recvbuf = malloc(MICROTCP_RECVBUF_LEN * sizeof(uint8_t));
   socket->buf_fill_level = 0;
   socket->init_win_size = MICROTCP_WIN_SIZE;
@@ -289,6 +298,7 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
 int
 microtcp_shutdown (microtcp_sock_t *socket, int how)
 {
+  printf("shutting down\n");
   microtcp_header_t finack, ack;
   ssize_t ret;
   uint32_t checksum_received, checksum_calculated;
@@ -401,6 +411,7 @@ ssize_t
 microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
                int flags)
 {
+  printf("sending\n");
   int                 i, segments_count, dup;
   size_t              last_valid_ack, tmp_cwnd, byte_limit;
   ssize_t             ret;
@@ -515,6 +526,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 ssize_t
 microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
 {
+  printf("receiving\n");
   ssize_t bytes_received;
   microtcp_header_t header;
   int i=0;

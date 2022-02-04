@@ -22,9 +22,51 @@
  * You can use this file to write a test microTCP server.
  * This file is already inserted at the build system.
  */
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <stdint.h>
+
+#include "../utils/crc32.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <netinet/in.h>
+
+#include "../lib/microtcp.h"
 
 int
 main(int argc, char **argv)
 {
+    microtcp_sock_t sock;
+    socklen_t client_addr_len;
+    struct sockaddr_in sin;
+  struct sockaddr client_addr;
+
+    sock = microtcp_socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock.sd == -1) {
+        printf("Error opening microTCP socket");
+        return -EXIT_FAILURE;
+    }
+
+    memset (&sin, 0, sizeof(struct sockaddr_in));
+    sin.sin_family = AF_INET;
+    sin.sin_port = htons (4444);
+    /* Bind to all available network interfaces */
+    sin.sin_addr.s_addr = INADDR_ANY;
+
+    if (microtcp_bind (&sock, (struct sockaddr *) &sin, sizeof(struct sockaddr_in)) == -1) {
+         printf("Error binding microTCP socket");
+        return -EXIT_FAILURE;
+    }
+
+    client_addr_len = sizeof(struct sockaddr);
+    microtcp_accept (&sock, &client_addr, client_addr_len);
+    if (sock.state == INVALID) {
+        printf("Error in TCP accept");
+    return -EXIT_FAILURE;
+  }
+
+  printf("cnnected to : %s", client_addr.sa_data);
 
 }

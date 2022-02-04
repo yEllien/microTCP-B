@@ -1,8 +1,7 @@
 #include "helper.h"
+#include "../utils/crc32.h"
 #include <string.h>
 #include <stdlib.h>
-
-
 
 uint16_t set_bit (uint16_t data, uint16_t pos)
 {
