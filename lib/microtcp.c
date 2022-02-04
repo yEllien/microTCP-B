@@ -68,6 +68,7 @@ printf("init timeout\n");
     s.state = INVALID;
     return s;
   }
+  printf("socket created successfully. returning\n");
 
   return s;
 }
