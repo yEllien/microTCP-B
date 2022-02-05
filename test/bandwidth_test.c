@@ -387,7 +387,7 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   sin.sin_port = htons (server_port);
 
   /* The server's IP*/
-  inet_aton(serverip, &sin.sin_addr.s_addr);
+  inet_aton(serverip, &sin.sin_addr);
 
 
  printf("try connect\n");
