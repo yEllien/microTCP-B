@@ -398,8 +398,8 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
     perror ("TCP connect");
     exit (EXIT_FAILURE);
   }
-
-  printf ("Starting sending data...\n");
+  
+  printf ("Starting to send data...\n");
   /* Start sending the data */
   while (!feof (fp)) {
     read_items = fread (buffer, sizeof(uint8_t), CHUNK_SIZE, fp);

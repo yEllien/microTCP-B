@@ -121,6 +121,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
     socket->state = INVALID;
     return socket->sd;
   } 
+  printf("bytes sent : %d \n", bytes_sent);
   socket->seq_number += 1;
   socket->packets_send += 1;
   socket->bytes_send += bytes_sent;
