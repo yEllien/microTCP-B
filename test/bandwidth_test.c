@@ -200,7 +200,7 @@ server_microtcp (uint16_t listen_port, const char *file)
   sin.sin_family = AF_INET;
   sin.sin_port = htons (listen_port);
   /* Bind to all available network interfaces */
-  sin.sin_addr.s_addr = INADDR_ANY;
+  sin.sin_addr.s_addr = htonl(INADDR_ANY);
 
   if (microtcp_bind (&sock, (struct sockaddr *) &sin, sizeof(struct sockaddr_in)) == -1) {
     perror ("TCP bind");
@@ -387,7 +387,7 @@ client_microtcp (const char *serverip, uint16_t server_port, const char *file)
   sin.sin_port = htons (server_port);
 
   /* The server's IP*/
-  sin.sin_addr.s_addr = inet_addr (serverip);
+  inet_aton(serverip, &sin.sin_addr.s_addr);
 
 
  printf("try connect\n");

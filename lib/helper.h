@@ -137,7 +137,7 @@ void send_segments(microtcp_sock_t *socket, uint8_t **segments, int segments_cou
 
 void enter_slow_start (microtcp_sock_t *socket);
 
-void fast_retransmit (microtcp_sock_t *socket);
+void fast_retransmit (microtcp_sock_t *socket, int window);
 
 void update_cwnd (microtcp_sock_t *socket);
 

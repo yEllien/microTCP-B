@@ -113,7 +113,7 @@ microtcp_connect (microtcp_sock_t *socket, const struct sockaddr *address,
   /* create the header for the 1st step of the 3-way handshake (SYN segment) */
   syn = make_header(socket->seq_number, 0, 0, 0, 0, 0, 1, 0);
   //syn->checksum = crc32(&synack, sizeof(synack));                             //add checksum
-  bytes_sent = sendto(socket->sd, &syn, sizeof((syn)), MSG_CONFIRM, address, address_len); //send segment
+  bytes_sent = sendto(socket->sd, &syn, sizeof((syn)), 0, address, address_len); //send segment
   
   if(bytes_sent != sizeof(syn))
   {
@@ -211,12 +211,15 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   //receive SYN segment from any address
   do
   {
-    ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL, &src_addr, &src_addr_length);
+    printf("receiving\n");
+    ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, 0, &src_addr, &src_addr_length);
+    printf("received\n");
     if (ret > 0)
       syn = get_hbo_header(socket->recvbuf);
   } while (!is_header_control_valid(syn, 0, 0, 1, 0));
   
   //received SYN segment
+    printf("received SYN\n");
 
   // checksum validation
   if(!is_checksum_valid(socket->recvbuf, ret)){
@@ -506,7 +509,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         bytes_sent += tmp_data_len;
 
         /* update last valid acknowledgement number */
-        last_valid_ack = tmp_header->ack_number;
+        last_valid_ack = tmp_header.ack_number;
         
         /* update exepcted sequence number */
         socket->seq_number += tmp_data_len;
