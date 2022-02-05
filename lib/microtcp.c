@@ -471,7 +471,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       }
       
       /* update current window size to what the receiver sent us */
-      socket->curr_win_size = tmp_header.window;
+      //socket->curr_win_size = tmp_header.window;
 
       /* if ack_number is not what was expected */
       if (tmp_header.ack_number != socket->seq_number)
@@ -480,7 +480,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         {
           /* 3rd duplicate ACK */
           dup = 0;
-          fast_retransmit(socket);
+          fast_retransmit(socket, tmp_header.window);
           /* retransmit */
           break;
         }
@@ -506,7 +506,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         bytes_sent += tmp_data_len;
 
         /* update last valid acknowledgement number */
-        last_valid_ack = socket->seq_number;
+        last_valid_ack = tmp_header->ack_number;
         
         /* update exepcted sequence number */
         socket->seq_number += tmp_data_len;
@@ -517,7 +517,9 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         update_cwnd(socket);
       }
     }
+    
     /* after break we land here */
+    socket->curr_win_size = socket->seq_number - last_valid_ack;
   }
 }
 

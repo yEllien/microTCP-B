@@ -378,7 +378,7 @@ void send_segments(microtcp_sock_t *socket, uint8_t **segments, int segments_cou
     }
     /*    Update current window :     */
     /* unacked bytes mean unread bytes*/
-    socket->curr_win_size-=data_len;
+    socket->curr_win_size -= data_len;
   }
   return;
 }
@@ -391,10 +391,11 @@ void enter_slow_start (microtcp_sock_t *socket)
   socket->cwnd = MICROTCP_MSS;
 }
 
-void fast_retransmit (microtcp_sock_t *socket)
+void fast_retransmit (microtcp_sock_t *socket, int window)
 {
   socket->ssthresh = socket->cwnd/2;
   socket->cwnd = socket->ssthresh + 3*MICROTCP_MSS;
+  socket->curr_win_size = window;
 }
 
 void update_cwnd (microtcp_sock_t *socket)
