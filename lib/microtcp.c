@@ -417,7 +417,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
   ssize_t             ret;
   uint8_t           **segments;
   uint32_t            tmp_data_len;
-  uint64_t            bytes_sent;
+  uint64_t            bytes_sent = 0;
   microtcp_header_t   tmp_header;
   int wait;
 
@@ -520,6 +520,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
     /* after break we land here */
     socket->curr_win_size = socket->seq_number - last_valid_ack;
   }
+  return bytes_sent;
 }
 
 
