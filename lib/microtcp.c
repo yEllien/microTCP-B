@@ -517,7 +517,6 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         /* update congestion control state and variables */
         update_cwnd(socket);
 
-        
         /* update exepcted sequence number */
         socket->seq_number += tmp_data_len;
       }
@@ -538,7 +537,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   microtcp_header_t header;
   int i=0;
 
-  bytes_received = recv(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN,/*TODO:what's this?*/ flags);
+  bytes_received = recv(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, flags);
 
   if(bytes_received<0)
     return -1;
@@ -552,5 +551,7 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   }
 
   //sends appropriate ACK
-  return send_ack(socket, socket->recvbuf, bytes_received);
+  send_ack(socket, socket->recvbuf, bytes_received);
+
+  return bytes_received;
 }
