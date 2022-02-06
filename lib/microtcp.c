@@ -42,7 +42,6 @@ microtcp_socket (int domain, int type, int protocol)
     return s;
   }
   
-printf("init socket\n");
   s.packets_send = 0;
   s.packets_received = 0;
   s.packets_lost = 0;
@@ -50,8 +49,6 @@ printf("init socket\n");
   s.bytes_received = 0;
   s.bytes_lost = 0;
   
-printf("init timeout\n");
-
   struct timeval *timeout;
   timeout = malloc (sizeof(struct timeval));
 
@@ -68,7 +65,6 @@ printf("init timeout\n");
     s.state = INVALID;
     return s;
   }
-  printf("socket created successfully. returning\n");
 
   return s;
 }
@@ -213,13 +209,13 @@ microtcp_accept (microtcp_sock_t *socket, struct sockaddr *address,
   {
     printf("receiving\n");
     ret = recvfrom(socket->sd, socket->recvbuf, MICROTCP_RECVBUF_LEN, 0, &src_addr, &src_addr_length);
-    printf("received\n");
+    printf("received something\n");
     if (ret > 0)
       syn = get_hbo_header(socket->recvbuf);
   } while (!is_header_control_valid(syn, 0, 0, 1, 0));
   
   //received SYN segment
-    printf("received SYN\n");
+  printf("received SYN\n");
 
   // checksum validation
   if(!is_checksum_valid(socket->recvbuf, ret)){
