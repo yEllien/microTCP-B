@@ -219,16 +219,6 @@ server_microtcp (uint16_t listen_port, const char *file)
     return -EXIT_FAILURE;
   }
 
-  /*
-   * Start processing the received data.
-   *
-   * Also start measuring time. Not the most accurate measurement, but
-   * it is a good starting point.
-   *
-   * At hy-435 we deal with bandwidth measurements software in a more
-   * right and careful way :-)
-   */
-
   clock_gettime (CLOCK_MONOTONIC_RAW, &start_time);
   while ((received = microtcp_recv (&sock, buffer, CHUNK_SIZE, 0)) > 0) {
     written = fwrite (buffer, sizeof(uint8_t), received, fp);
