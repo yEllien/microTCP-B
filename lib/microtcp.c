@@ -551,7 +551,5 @@ microtcp_recv (microtcp_sock_t *socket, void *buffer, size_t length, int flags)
   }
 
   //sends appropriate ACK
-  send_ack(socket, socket->recvbuf, bytes_received);
-
-  return bytes_received;
+  return send_ack(socket, socket->recvbuf, bytes_received);
 }
