@@ -447,8 +447,10 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
     {    
       if (!get_valid_segment(socket, socket->recvbuf, sizeof(microtcp_header_t)))
       {
-        enter_slow_start(socket);
+        /*This means that either the timer ran out or the segments received is corrupt*/
         /*retransmit*/
+        enter_slow_start(socket);
+        /*curr_wind_size does not change*/
         break;
       }
       
@@ -494,7 +496,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
         else 
         {
           /*what happens if ack is not what was expected and not a duplicate?*/
-          perror("This is not supposed to happen!");
+          perror("Ignored unexpected ACK\n");
         }
       }
       else 
@@ -506,19 +508,21 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
 
         /* update last valid acknowledgement number */
         last_valid_ack = tmp_header.ack_number;
-        
-        /* update exepcted sequence number */
-        socket->seq_number += tmp_data_len;
 
         /* segment sent successfully! */
 
+        /* update current window */
+        socket->curr_win_size = socket->init_win_size - (socket->seq_number - last_valid_ack);
+
         /* update congestion control state and variables */
         update_cwnd(socket);
+
+        
+        /* update exepcted sequence number */
+        socket->seq_number += tmp_data_len;
       }
-    }
-    
+    } 
     /* after break we land here */
-    socket->curr_win_size = socket->seq_number - last_valid_ack;
   }
   return bytes_sent;
 }

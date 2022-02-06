@@ -109,7 +109,7 @@ int get_valid_segment (microtcp_sock_t *socket, uint8_t *recvbuf, ssize_t length
   ssize_t ret;
   ret = recv(socket->sd, recvbuf, MICROTCP_RECVBUF_LEN, MSG_WAITALL);
     
-  if ( (length? (ret != length) : (ret == -1)) || corrupt_packet(recvbuf, ret))
+  if (ret == -1) || corrupt_packet(recvbuf, ret))
   {
     return 0;
   }
@@ -416,7 +416,7 @@ void update_cwnd (microtcp_sock_t *socket)
 }
 
 
-/* Stuff i dont know if we need or to be added  
+/*  
 
 void update_window_size(microtcp_sock_t *socket){
 
