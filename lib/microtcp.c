@@ -434,7 +434,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       if(ret == -1)
       {
         microtcp_shutdown(socket,  SHUT_RDWR);
-        return;
+        return -1;
       }
       if(ret)
         byte_limit = min (min (socket->curr_win_size, socket->cwnd), length-bytes_sent);
@@ -460,7 +460,7 @@ microtcp_send (microtcp_sock_t *socket, const void *buffer, size_t length,
       if (is_header_control_valid(tmp_header, 1, 0, 0, 1))
       { 
         microtcp_shutdown(socket,  SHUT_RDWR);
-        return;
+        return -1;
       }
 
       /* is it not an ACK? */
